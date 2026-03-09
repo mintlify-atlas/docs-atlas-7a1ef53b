@@ -1,0 +1,335 @@
+---
+title: Annotations
+description: Mark events and time ranges on your graphs
+---
+
+Annotations provide a way to mark points in time or time ranges on graphs with rich events from data sources or manual entries. They help correlate metrics with events like deployments, incidents, or business milestones.
+
+## What are Annotations?
+
+Annotations appear as vertical lines or shaded regions on graphs, with associated metadata such as:
+
+- **Title and text**: Descriptive information about the event
+- **Tags**: Categorize and filter annotations
+- **Time range**: Either a single point in time or a time region
+- **Source**: Manual entries, alert state changes, or data source queries
+
+<Note>
+Annotations are displayed across all panels in a dashboard that support them, making it easy to correlate events across different metrics.
+</Note>
+
+## Creating Manual Annotations
+
+You can create annotations directly from the dashboard UI:
+
+1. **Ctrl+Click** (or **Cmd+Click** on Mac) on a graph panel at the desired time
+2. Fill in the annotation details:
+   - **Tags**: Add searchable tags
+   - **Description**: Event details
+   - **Time range**: Optionally drag to create a region annotation
+3. Save the annotation
+
+### Using the API
+
+Create annotations programmatically via the HTTP API:
+
+```typescript
+interface AnnotationEvent {
+  id?: string;
+  dashboardId?: number;
+  dashboardUID?: string | null;
+  panelId?: number;
+  userId?: number;
+  time?: number;          // Unix timestamp in milliseconds
+  timeEnd?: number;       // For region annotations
+  isRegion?: boolean;
+  title?: string;
+  text?: string;
+  tags?: string[];
+  color?: string;
+}
+```
+
+<CodeGroup>
+```bash POST Create Annotation
+curl -X POST \
+  'http://localhost:3000/api/annotations' \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "time": 1678886400000,
+    "timeEnd": 1678890000000,
+    "tags": ["deployment", "backend"],
+    "text": "v2.0 deployment completed",
+    "isRegion": true
+  }'
+```
+
+```bash PATCH Update Annotation
+curl -X PUT \
+  'http://localhost:3000/api/annotations/{id}' \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "time": 1678886400000,
+    "tags": ["deployment", "backend", "production"],
+    "text": "v2.0 production deployment"
+  }'
+```
+
+```bash DELETE Delete Annotation
+curl -X DELETE \
+  'http://localhost:3000/api/annotations/{id}'
+```
+</CodeGroup>
+
+## Annotation Queries
+
+Annotation queries automatically fetch events from data sources and display them on dashboards.
+
+### Configuring Annotation Queries
+
+1. Go to **Dashboard Settings** → **Annotations**
+2. Click **Add annotation query**
+3. Configure the query:
+   - **Name**: Display name for the annotation layer
+   - **Data source**: Select the source (e.g., Prometheus, Loki, built-in)
+   - **Query**: Define the query using the data source's query language
+   - **Field mappings**: Map data source fields to annotation properties
+
+### Built-in Grafana Annotations
+
+The built-in Grafana data source provides access to:
+
+- **Annotations**: Manual annotations stored in Grafana's database
+- **Alert state history**: Automatic annotations from alert state changes
+
+```typescript
+interface AnnotationQuery {
+  datasource: DataSourceRef;
+  enable: boolean;
+  hide?: boolean;
+  iconColor: string;
+  name: string;
+  target?: AnnotationTarget;
+  type?: string;
+}
+```
+
+### Example: Prometheus Annotation Query
+
+Query Prometheus for deployment events:
+
+<CodeGroup>
+```promql Deployment Events
+CHANGES(deployment_version[5m]) > 0
+```
+
+```promql Alert Firing Events  
+ALERTS{alertstate="firing"}
+```
+</CodeGroup>
+
+### Field Mapping
+
+Map data source fields to annotation properties:
+
+```typescript
+interface AnnotationEventFieldMapping {
+  source?: 'field' | 'text' | 'skip';
+  value?: string;      // Field name or constant text
+  regex?: string;      // Optional regex transform
+}
+
+type AnnotationEventMappings = Partial<Record<keyof AnnotationEvent, AnnotationEventFieldMapping>>;
+```
+
+**Example mapping**:
+
+```json
+{
+  "time": { "source": "field", "value": "timestamp" },
+  "title": { "source": "field", "value": "event_name" },
+  "text": { "source": "field", "value": "description" },
+  "tags": { "source": "field", "value": "labels" }
+}
+```
+
+## Displaying Annotations
+
+### Dashboard-wide Annotations
+
+Annotations configured in dashboard settings appear on all compatible panels:
+
+```typescript
+interface AnnotationContainer {
+  list: AnnotationQuery[];
+}
+```
+
+### Panel-specific Filtering
+
+Filter which annotations appear on specific panels:
+
+```typescript
+interface AnnotationPanelFilter {
+  exclude?: boolean;
+  ids: number[];
+}
+```
+
+### Visual Customization
+
+- **Color**: Set per annotation query or individual annotation
+- **Tags**: Filter displayed annotations by tag
+- **Visibility**: Toggle annotation layers on/off
+
+## Querying Annotations
+
+Retrieve annotations programmatically:
+
+<CodeGroup>
+```bash Query by Time Range
+curl 'http://localhost:3000/api/annotations?from=1678886400000&to=1678972800000'
+```
+
+```bash Query by Dashboard
+curl 'http://localhost:3000/api/annotations?dashboardUID=abc123'
+```
+
+```bash Query by Tags
+curl 'http://localhost:3000/api/annotations?tags=deployment&tags=production'
+```
+
+```bash Get Tags
+curl 'http://localhost:3000/api/annotations/tags?limit=1000'
+```
+</CodeGroup>
+
+Response structure:
+
+```typescript
+interface AnnotationTag {
+  tag: string;
+  count: number;
+}
+
+interface AnnotationTagsResponse {
+  result: {
+    tags: AnnotationTag[];
+  };
+}
+```
+
+## Alert State History
+
+Grafana automatically creates annotations when alert rules change state:
+
+```typescript
+// Query alert-specific annotations
+interface AlertAnnotationQuery {
+  alertUID: string;
+}
+```
+
+<CodeGroup>
+```bash Get Alert History
+curl 'http://localhost:3000/api/annotations?alertUID=alert-uid-123'
+```
+</CodeGroup>
+
+These annotations include:
+- Alert name and state transition
+- Timestamp of state change
+- Alert labels as tags
+- Automatically color-coded by severity
+
+## TypeScript Client Example
+
+Using the annotation API client from `public/app/features/annotations/api.ts:1`:
+
+```typescript
+import { annotationServer } from 'app/features/annotations/api';
+import { AnnotationEvent } from '@grafana/data';
+
+const server = annotationServer();
+
+// Save an annotation
+const annotation: AnnotationEvent = {
+  time: Date.now(),
+  tags: ['deployment'],
+  text: 'Production deployment',
+};
+
+await server.save(annotation);
+
+// Update an annotation
+const updated = { ...annotation, id: '123', text: 'Updated text' };
+await server.update(updated);
+
+// Delete an annotation
+await server.delete({ id: '123' });
+
+// Get tags
+const tags = await server.tags();
+// Returns: [{ term: 'deployment', count: 15 }, ...]
+```
+
+## Best Practices
+
+<AccordionGroup>
+<Accordion title="Use Tags Consistently">
+Establish a tagging convention across your team:
+- **Type**: `deployment`, `incident`, `maintenance`
+- **Environment**: `production`, `staging`, `dev`
+- **Team**: `backend`, `frontend`, `data`
+
+This makes annotations easier to filter and search.
+</Accordion>
+
+<Accordion title="Automate with CI/CD">
+Integrate annotation creation into deployment pipelines:
+
+```bash
+# In your deployment script
+curl -X POST "$GRAFANA_URL/api/annotations" \
+  -H "Authorization: Bearer $GRAFANA_TOKEN" \
+  -d '{
+    "tags": ["deployment", "'$ENVIRONMENT'"],
+    "text": "Deployed '$VERSION' to '$ENVIRONMENT'"
+  }'
+```
+</Accordion>
+
+<Accordion title="Region Annotations for Incidents">
+Use region annotations (with `timeEnd`) to mark incident duration:
+- Start time: When the incident began
+- End time: When it was resolved
+- Tags: Severity level, affected services
+</Accordion>
+
+<Accordion title="Limit Annotation Queries">
+Too many annotation queries can slow down dashboard loading:
+- Keep to 3-5 annotation queries per dashboard
+- Use specific filters in queries
+- Disable queries when not needed
+</Accordion>
+</AccordionGroup>
+
+## Related Topics
+
+<CardGroup cols={2}>
+<Card title="Dashboard Settings" icon="gear" href="/dashboards/creating-dashboards">
+Configure dashboard-wide annotation queries
+</Card>
+
+<Card title="Alerting" icon="bell" href="/alerting/overview">
+Automatic annotations from alert state changes
+</Card>
+
+<Card title="Data Sources" icon="database" href="/datasources/overview">
+Annotation support varies by data source
+</Card>
+
+<Card title="API Reference" icon="code" href="/api/annotations">
+Complete HTTP API documentation
+</Card>
+</CardGroup>

@@ -1,0 +1,575 @@
+---
+title: Playlists
+description: Automatically rotate through dashboards for TV displays and monitoring walls
+---
+
+Playlists automatically cycle through a list of dashboards at a specified interval, perfect for TV displays, monitoring walls, or presentations.
+
+## What are Playlists?
+
+A playlist is an ordered collection of dashboards that rotate automatically:
+
+- **Automated rotation**: Cycle through dashboards at a fixed interval
+- **Flexible composition**: Add dashboards individually or by tag
+- **Display modes**: Normal, kiosk, or TV mode
+- **Customizable intervals**: Set rotation speed (e.g., 5m, 30s)
+
+<Note>
+Playlists preserve query parameters like `kiosk`, `orgId`, and dashboard-specific settings across rotations.
+</Note>
+
+## Creating Playlists
+
+### Via the UI
+
+1. Navigate to **Dashboards** → **Playlists**
+2. Click **New playlist**
+3. Configure playlist:
+   - **Name**: Descriptive title
+   - **Interval**: Rotation interval (e.g., `5m`, `30s`, `1h`)
+4. Add dashboards:
+   - **By title**: Search and select individual dashboards
+   - **By tag**: Include all dashboards with specific tags
+5. Reorder dashboards by dragging
+6. Save the playlist
+
+### Via the API
+
+<CodeGroup>
+```bash POST Create Playlist
+curl -X POST \
+  'http://localhost:3000/api/playlist/v1/playlists' \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "playlist": {
+      "metadata": {
+        "generateName": "prod-"  // Server generates unique name
+      },
+      "spec": {
+        "title": "Production Monitoring",
+        "interval": "5m",
+        "items": [
+          {
+            "type": "dashboard_by_uid",
+            "value": "dashboard-uid-1"
+          },
+          {
+            "type": "dashboard_by_uid",
+            "value": "dashboard-uid-2"
+          },
+          {
+            "type": "dashboard_by_tag",
+            "value": "production"
+          }
+        ]
+      }
+    }
+  }'
+```
+</CodeGroup>
+
+### TypeScript Interface
+
+```typescript
+import { Playlist, PlaylistSpec } from 'app/api/clients/playlist/v1';
+
+interface Playlist {
+  metadata?: {
+    name?: string;              // Unique identifier (generated if not provided)
+    generateName?: string;      // Prefix for auto-generated name
+    namespace?: string;
+    resourceVersion?: string;
+    creationTimestamp?: string;
+  };
+  spec?: PlaylistSpec;
+}
+
+interface PlaylistSpec {
+  title: string;                // Display name
+  interval: string;             // Duration (e.g., "5m", "30s")
+  items: PlaylistItem[];        // Dashboards to include
+}
+
+interface PlaylistItem {
+  type: 'dashboard_by_uid' | 'dashboard_by_tag';
+  value: string;                // Dashboard UID or tag name
+}
+```
+
+## Playlist Items
+
+### Dashboard by UID
+
+Add specific dashboards:
+
+```typescript
+{
+  type: 'dashboard_by_uid',
+  value: 'abc123'  // Dashboard UID
+}
+```
+
+### Dashboard by Tag
+
+Include all dashboards with a tag:
+
+```typescript
+{
+  type: 'dashboard_by_tag',
+  value: 'production'  // Tag name
+}
+```
+
+<Info>
+Tag-based items dynamically include dashboards. Adding/removing tags from dashboards automatically updates the playlist.
+</Info>
+
+### Item Order
+
+Dashboards play in the order they appear in the `items` array. When using tags, dashboards are sorted alphabetically.
+
+## Playlist Intervals
+
+Intervals use Grafana's duration format:
+
+- **Seconds**: `30s`, `45s`
+- **Minutes**: `1m`, `5m`, `15m`
+- **Hours**: `1h`, `2h`
+
+```typescript
+import { rangeUtil } from '@grafana/data';
+
+// Convert interval string to milliseconds
+const intervalMs = rangeUtil.intervalToMs('5m');  // 300000
+```
+
+<Warning>
+Very short intervals (< 10s) may cause performance issues if dashboards are complex or queries are slow.
+</Warning>
+
+## Starting a Playlist
+
+### Start Modal
+
+From the playlists page, click **Start playlist** to configure:
+
+- **Mode**: Normal or Kiosk
+- **Autofit panels**: Adjust panel heights to screen
+- **Hide logo**: Remove branding (kiosk mode only)
+- **Display controls**: Toggle time picker, variables, links
+
+```typescript
+interface StartModalOptions {
+  mode: boolean;                    // false = normal, true = kiosk
+  autoFit: boolean;
+  hideLogo: boolean;                // Kiosk mode only
+  displayTimePicker: boolean;
+  displayVariables: boolean;
+  displayLinks: boolean;
+}
+```
+
+### Direct URL
+
+Start a playlist directly via URL:
+
+```
+/playlists/play/{playlist-name}?kiosk=true&autofitpanels=true
+```
+
+Supported query parameters:
+
+- `kiosk`: `true` for kiosk mode, `tv` for TV mode (deprecated)
+- `autofitpanels`: `true` to fit panels to screen
+- `hideLogo`: `1` to hide branding (kiosk mode)
+- `_dash.hideTimePicker`: `true` to hide time picker
+- `_dash.hideVariables`: `true` to hide variables
+- `_dash.hideLinks`: `true` to hide dashboard links
+
+### Programmatic Start
+
+```typescript
+import { playlistSrv } from 'app/features/playlist/PlaylistSrv';
+import { useGetPlaylistQuery } from 'app/api/clients/playlist/v1';
+
+const { data: playlist } = useGetPlaylistQuery({ name: 'playlist-uid' });
+
+if (playlist) {
+  await playlistSrv.start(playlist);
+}
+```
+
+## Playlist Modes
+
+### Normal Mode
+
+Standard Grafana UI with navigation:
+
+- Top navigation bar visible
+- Side menu accessible
+- Full dashboard controls
+- User can navigate away
+
+### Kiosk Mode
+
+Clean display with minimal UI:
+
+- No navigation bars
+- No side menu
+- Optional time picker and variables
+- Press `Esc` or click settings icon to exit
+
+Perfect for public displays and monitoring walls.
+
+### TV Mode (Deprecated)
+
+Legacy mode, use kiosk mode instead:
+
+```typescript
+// Old: TV mode
+locationService.push('/playlists/play/abc123?kiosk=tv');
+
+// New: Kiosk mode
+locationService.push('/playlists/play/abc123?kiosk=true');
+```
+
+## Controlling Playback
+
+### Navigation
+
+While a playlist is playing:
+
+- **Next**: Skip to next dashboard (programmatically: `playlistSrv.next()`)
+- **Previous**: Go to previous dashboard (`playlistSrv.prev()`)
+- **Stop**: Exit playlist (`playlistSrv.stop()`)
+
+### Auto-reload
+
+Every 3 loops, the playlist performs a full page reload to prevent memory leaks:
+
+```typescript
+// From PlaylistSrv.ts:64
+if (this.numberOfLoops >= 3) {
+  window.location.href = this.startUrl;  // Full reload
+  return;
+}
+```
+
+### Preserved Parameters
+
+These query parameters persist across dashboard transitions:
+
+```typescript
+const queryParamsToPreserve = {
+  kiosk: true,
+  autofitpanels: true,
+  orgId: true,
+  hideLogo: true,
+  '_dash.hideTimePicker': true,
+  '_dash.hideVariables': true,
+  '_dash.hideLinks': true,
+};
+```
+
+## Managing Playlists
+
+### List Playlists
+
+<CodeGroup>
+```bash GET List All
+curl 'http://localhost:3000/api/playlist/v1/playlists'
+```
+
+```typescript TypeScript Hook
+import { useListPlaylistQuery } from 'app/api/clients/playlist/v1';
+
+const { data: playlists } = useListPlaylistQuery({});
+
+playlists?.items.forEach(p => {
+  console.log(`${p.spec?.title}: ${p.spec?.items?.length} items`);
+});
+```
+</CodeGroup>
+
+### Get Playlist
+
+<CodeGroup>
+```bash GET Playlist
+curl 'http://localhost:3000/api/playlist/v1/playlists/{name}'
+```
+
+```typescript TypeScript Hook
+import { useGetPlaylistQuery } from 'app/api/clients/playlist/v1';
+
+const { data: playlist } = useGetPlaylistQuery({ name: 'playlist-uid' });
+```
+</CodeGroup>
+
+### Update Playlist
+
+<CodeGroup>
+```bash PUT Update Playlist
+curl -X PUT \
+  'http://localhost:3000/api/playlist/v1/playlists/{name}' \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "playlist": {
+      "metadata": {
+        "name": "playlist-uid",
+        "resourceVersion": "123"  // For optimistic locking
+      },
+      "spec": {
+        "title": "Updated Title",
+        "interval": "10m",
+        "items": [ /* updated items */ ]
+      }
+    }
+  }'
+```
+
+```typescript TypeScript Hook
+import { useReplacePlaylistMutation } from 'app/api/clients/playlist/v1';
+
+const [updatePlaylist] = useReplacePlaylistMutation();
+
+await updatePlaylist({
+  name: 'playlist-uid',
+  playlist: {
+    metadata: { name: 'playlist-uid' },
+    spec: {
+      title: 'Updated Playlist',
+      interval: '10m',
+      items: [
+        { type: 'dashboard_by_uid', value: 'new-dash-uid' }
+      ]
+    }
+  }
+});
+```
+</CodeGroup>
+
+### Delete Playlist
+
+<CodeGroup>
+```bash DELETE Playlist
+curl -X DELETE 'http://localhost:3000/api/playlist/v1/playlists/{name}'
+```
+
+```typescript TypeScript Hook
+import { useDeletePlaylistMutation } from 'app/api/clients/playlist/v1';
+
+const [deletePlaylist] = useDeletePlaylistMutation();
+
+await deletePlaylist({ name: 'playlist-uid' });
+```
+</CodeGroup>
+
+## Sharing Playlists
+
+Share playlists via URL:
+
+### Direct Link
+
+```
+https://grafana.example.com/playlists/play/playlist-uid?kiosk=true
+```
+
+### Embedded in iframe
+
+```html
+<iframe
+  src="https://grafana.example.com/playlists/play/playlist-uid?kiosk=true&autofitpanels=true"
+  width="1920"
+  height="1080"
+  frameborder="0">
+</iframe>
+```
+
+### URL Builder
+
+```typescript
+import { urlUtil } from '@grafana/data';
+import { config } from '@grafana/runtime';
+
+const playlistUrl = urlUtil.renderUrl(
+  `/playlists/play/${playlistName}`,
+  {
+    kiosk: true,
+    autofitpanels: true,
+    hideLogo: '1'
+  }
+);
+
+const fullUrl = `${config.appUrl}${playlistUrl}`;
+```
+
+## Use Cases
+
+<AccordionGroup>
+<Accordion title="Monitoring Wall / NOC Display">
+Rotate through operational dashboards on large displays:
+
+```typescript
+{
+  title: 'NOC Overview',
+  interval: '30s',
+  items: [
+    { type: 'dashboard_by_tag', value: 'noc' },
+    { type: 'dashboard_by_tag', value: 'incidents' }
+  ]
+}
+```
+
+Start in kiosk mode with autofitpanels for wall displays.
+</Accordion>
+
+<Accordion title="Executive Dashboard Rotation">
+Show high-level metrics to leadership:
+
+```typescript
+{
+  title: 'Executive Overview',
+  interval: '5m',
+  items: [
+    { type: 'dashboard_by_uid', value: 'revenue-metrics' },
+    { type: 'dashboard_by_uid', value: 'user-growth' },
+    { type: 'dashboard_by_uid', value: 'system-health' }
+  ]
+}
+```
+</Accordion>
+
+<Accordion title="Daily Standup Display">
+Cycle through team dashboards during meetings:
+
+```typescript
+{
+  title: 'Team Standup',
+  interval: '2m',
+  items: [
+    { type: 'dashboard_by_tag', value: 'team-api' },
+    { type: 'dashboard_by_uid', value: 'sprint-progress' }
+  ]
+}
+```
+</Accordion>
+
+<Accordion title="Multi-environment Monitoring">
+Rotate through production, staging, and dev:
+
+```typescript
+{
+  title: 'All Environments',
+  interval: '1m',
+  items: [
+    { type: 'dashboard_by_tag', value: 'prod-overview' },
+    { type: 'dashboard_by_tag', value: 'staging-overview' },
+    { type: 'dashboard_by_tag', value: 'dev-overview' }
+  ]
+}
+```
+</Accordion>
+</AccordionGroup>
+
+## Best Practices
+
+<AccordionGroup>
+<Accordion title="Optimize Dashboard Load Times">
+Playlists are only as fast as the slowest dashboard:
+
+- Limit the number of panels per dashboard
+- Use reasonable time ranges (avoid querying years of data)
+- Optimize queries and use caching
+- Test rotation speed with actual query load
+</Accordion>
+
+<Accordion title="Use Appropriate Intervals">
+- **Fast rotation (15-30s)**: Simple dashboards, quick overview
+- **Medium rotation (1-5m)**: Detailed dashboards, monitoring walls
+- **Slow rotation (10m+)**: Complex analytics, executive displays
+
+Match interval to dashboard complexity.
+</Accordion>
+
+<Accordion title="Leverage Tags for Dynamic Playlists">
+Use tag-based items for maintainable playlists:
+
+```typescript
+items: [
+  { type: 'dashboard_by_tag', value: 'production' },
+  { type: 'dashboard_by_tag', value: 'critical-alerts' }
+]
+```
+
+Adding/removing tags from dashboards automatically updates the playlist.
+</Accordion>
+
+<Accordion title="Consider Screen Resolution">
+For TV displays:
+
+- Use `autofitpanels=true` to optimize panel sizing
+- Design dashboards for the target resolution (usually 1920x1080)
+- Test visibility from viewing distance
+- Use larger fonts and fewer panels
+</Accordion>
+
+<Accordion title="Handle Failures Gracefully">
+If a dashboard fails to load:
+
+- Playlist continues to next dashboard after interval
+- Use dashboard health tags to exclude broken dashboards
+- Monitor playlist URLs for errors
+</Accordion>
+</AccordionGroup>
+
+## Troubleshooting
+
+<AccordionGroup>
+<Accordion title="Playlist Not Rotating">
+- Check browser console for JavaScript errors
+- Verify interval format (e.g., `5m`, not `5 minutes`)
+- Ensure dashboards in playlist are accessible
+- Check that playlist service is running: `playlistSrv.state.isPlaying`
+</Accordion>
+
+<Accordion title="Memory Issues After Long Playback">
+Playlist auto-reloads every 3 loops to prevent memory leaks:
+
+```typescript
+// Adjust in PlaylistSrv.ts if needed
+if (this.numberOfLoops >= 3) {
+  window.location.href = this.startUrl;
+}
+```
+
+For infinite playback, this is expected behavior.
+</Accordion>
+
+<Accordion title="Dashboard Variables Not Working">
+Ensure variables use URL-sync or default values:
+
+- Playlists don't preserve variable selections between dashboards
+- Each dashboard loads with its default variable values
+- Use `_dash.hideVariables=true` if variables shouldn't be user-editable
+</Accordion>
+</AccordionGroup>
+
+## Related Topics
+
+<CardGroup cols={2}>
+<Card title="Dashboards" icon="chart-line" href="/dashboards/overview">
+Create dashboards to include in playlists
+</Card>
+
+<Card title="Dashboard Settings" icon="gear" href="/dashboards/creating-dashboards">
+Configure dashboard display options
+</Card>
+
+<Card title="Kiosk Mode" icon="tv" href="/dashboards/kiosk-mode">
+Detailed kiosk mode documentation
+</Card>
+
+<Card title="Sharing" icon="share" href="/dashboards/sharing">
+Share dashboards and playlists
+</Card>
+</CardGroup>

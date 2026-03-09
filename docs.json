@@ -52,7 +52,11 @@
               "dashboards/panels",
               "dashboards/variables",
               "dashboards/templating",
-              "dashboards/sharing"
+              "dashboards/sharing",
+              "dashboards/annotations",
+              "dashboards/library-panels",
+              "dashboards/folders",
+              "dashboards/playlists"
             ]
           },
           {

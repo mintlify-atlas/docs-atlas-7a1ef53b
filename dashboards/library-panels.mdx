@@ -1,0 +1,464 @@
+---
+title: Library Panels
+description: Create reusable panels across dashboards
+---
+
+Library panels allow you to create a panel once and reuse it across multiple dashboards. When you update a library panel, all dashboards using it reflect the changes automatically.
+
+## What are Library Panels?
+
+Library panels are shared, reusable panel definitions stored separately from dashboards:
+
+- **Single source of truth**: Update once, reflect everywhere
+- **Version controlled**: Track changes with version history
+- **Organized by folder**: Store in folders with permissions
+- **Dashboard independent**: Panel configuration without grid position or ID
+
+<Note>
+Library panels exclude dashboard-specific properties like `gridPos`, `id`, and `libraryPanel` reference from the stored model.
+</Note>
+
+## Creating Library Panels
+
+### From an Existing Panel
+
+1. Edit a panel on any dashboard
+2. Click the panel title → **More...** → **Create library panel**
+3. Configure:
+   - **Name**: Unique identifier for the panel
+   - **Folder**: Where to store the library panel
+   - **Description**: Optional documentation
+4. Save the library panel
+
+### From the Library Panels Page
+
+1. Navigate to **Dashboards** → **Library panels**
+2. Click **New library panel**
+3. Configure the panel (visualization, queries, options)
+4. Set name, folder, and description
+5. Save
+
+### TypeScript Interface
+
+```typescript
+interface LibraryPanel {
+  uid: string;
+  name: string;
+  type: string;                    // Panel plugin ID
+  description?: string;
+  folderUid?: string;
+  version: number;
+  schemaVersion?: number;
+  
+  // Panel configuration (without position/id)
+  model: Omit<Panel, 'gridPos' | 'id' | 'libraryPanel'>;
+  
+  // Metadata
+  meta?: LibraryElementDTOMeta;
+}
+
+interface LibraryElementDTOMeta {
+  connectedDashboards: number;
+  created: string;
+  createdBy: LibraryElementDTOMetaUser;
+  folderName: string;
+  folderUid: string;
+  updated: string;
+  updatedBy: LibraryElementDTOMetaUser;
+}
+```
+
+## Using Library Panels in Dashboards
+
+### Add to Dashboard
+
+1. Edit a dashboard
+2. Click **Add** → **Add a panel from the panel library**
+3. Search or browse library panels
+4. Select a panel to add it to your dashboard
+5. Position and resize as needed
+
+### Panel Reference
+
+When added to a dashboard, library panels are referenced (not copied):
+
+```typescript
+interface Panel {
+  // ... other panel properties
+  
+  // Library panel reference
+  libraryPanel?: LibraryPanelRef;
+}
+
+interface LibraryPanelRef {
+  uid: string;     // Library panel UID
+  name: string;    // Library panel name
+}
+```
+
+### Unlink from Library
+
+To customize a library panel for a specific dashboard:
+
+1. Click the panel title → **More...** → **Unlink library panel**
+2. The panel becomes a regular dashboard panel
+3. Changes no longer sync with the library panel
+
+<Warning>
+Unlinking creates an independent copy. Future updates to the library panel won't affect the unlinked panel.
+</Warning>
+
+## Managing Library Panels
+
+### Search and Filter
+
+The library panels page supports filtering:
+
+```typescript
+interface GetLibraryPanelsOptions {
+  searchString?: string;           // Text search
+  perPage?: number;                // Results per page (default: 100)
+  page?: number;                   // Page number (default: 1)
+  excludeUid?: string;             // Exclude specific panel
+  sortDirection?: string;          // 'asc' or 'desc'
+  typeFilter?: string[];           // Filter by panel type
+  folderFilterUIDs?: string[];     // Filter by folder
+}
+
+interface LibraryElementsSearchResult {
+  totalCount: number;
+  elements: LibraryPanel[];
+  perPage: number;
+  page: number;
+}
+```
+
+### Update Library Panel
+
+Updating a library panel affects all connected dashboards:
+
+1. From the library panels page, click a panel
+2. Edit the panel configuration
+3. Save changes
+4. All dashboards using this panel will be updated
+
+<CodeGroup>
+```typescript API Update
+import { updateLibraryPanel } from 'app/features/library-panels/state/api';
+
+const updated = await updateLibraryPanel({
+  libraryPanel: {
+    uid: 'panel-uid',
+    name: 'Updated Panel',
+    version: 5,
+    folderUid: 'folder-uid'
+  },
+  // Panel model without gridPos, id, libraryPanel
+  type: 'timeseries',
+  title: 'Updated Title',
+  targets: [/* queries */],
+  // ... other panel options
+});
+```
+</CodeGroup>
+
+### Delete Library Panel
+
+Before deleting, check connected dashboards:
+
+```typescript
+import { 
+  getLibraryPanelConnectedDashboards,
+  deleteLibraryPanel 
+} from 'app/features/library-panels/state/api';
+
+// Check connections
+const connections = await getLibraryPanelConnectedDashboards('panel-uid');
+console.log(`Used in ${connections.length} dashboards`);
+
+// Delete if safe
+if (connections.length === 0) {
+  await deleteLibraryPanel('panel-uid');
+}
+```
+
+<Warning>
+Deleting a library panel breaks references in dashboards using it. Those panels will show as broken.
+</Warning>
+
+## API Reference
+
+### List Library Panels
+
+<CodeGroup>
+```bash GET List Panels
+curl 'http://localhost:3000/api/library-elements?kind=1&perPage=100&page=1'
+```
+
+```bash GET Search Panels
+curl 'http://localhost:3000/api/library-elements?searchString=cpu&folderFilterUIDs=folder-uid'
+```
+</CodeGroup>
+
+### Get Library Panel
+
+<CodeGroup>
+```bash GET By UID
+curl 'http://localhost:3000/api/library-elements/{uid}'
+```
+
+```bash GET By Name
+curl 'http://localhost:3000/api/library-elements/name/{name}'
+```
+</CodeGroup>
+
+### Create Library Panel
+
+```bash
+curl -X POST \
+  'http://localhost:3000/api/library-elements' \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "folderUid": "folder-uid",
+    "name": "CPU Usage Panel",
+    "model": {
+      "type": "timeseries",
+      "title": "CPU Usage",
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "prometheus" },
+          "expr": "rate(cpu_usage[5m])"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent"
+        }
+      }
+    },
+    "kind": 1
+  }'
+```
+
+### Update Library Panel
+
+```bash
+curl -X PATCH \
+  'http://localhost:3000/api/library-elements/{uid}' \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "folderUid": "folder-uid",
+    "name": "CPU Usage Panel",
+    "version": 2,
+    "model": { /* updated panel config */ },
+    "kind": 1
+  }'
+```
+
+### Delete Library Panel
+
+```bash
+curl -X DELETE 'http://localhost:3000/api/library-elements/{uid}'
+```
+
+### Get Connected Dashboards
+
+```bash
+curl 'http://localhost:3000/api/library-elements/{uid}/connections'
+```
+
+Response:
+
+```typescript
+interface LibraryElementConnectionDTO {
+  id: number;
+  kind: LibraryElementConnectionKind;  // 1 = Dashboard
+  elementId: number;
+  connectionId: number;
+  connectionUid: string;                // Dashboard UID
+  created: string;
+  createdBy: LibraryElementDTOMetaUser;
+}
+```
+
+## Permissions and Sharing
+
+### Folder Permissions
+
+Library panels inherit permissions from their folder:
+
+- **Viewers**: Can use library panels in dashboards
+- **Editors**: Can update library panel definitions
+- **Admins**: Can delete library panels and manage permissions
+
+<Note>
+To use a library panel, users need at least view permission on the folder containing it.
+</Note>
+
+### Moving Between Folders
+
+Update the `folderUid` to move a library panel:
+
+```typescript
+await updateLibraryPanel({
+  libraryPanel: {
+    uid: 'panel-uid',
+    name: 'My Panel',
+    version: 3,
+    folderUid: 'new-folder-uid'  // Move to different folder
+  },
+  // ... model
+});
+```
+
+Permissions update automatically based on the new folder.
+
+## Version History
+
+Library panels track version numbers:
+
+- Incremented automatically on each update
+- Used for optimistic locking (prevents concurrent updates)
+- Version mismatch on update returns an error
+
+```typescript
+// Update requires current version
+const panel = await getLibraryPanel('panel-uid');
+
+await updateLibraryPanel({
+  libraryPanel: {
+    uid: panel.uid,
+    name: panel.name,
+    version: panel.version,  // Must match current version
+    folderUid: panel.folderUid
+  },
+  // ... updated model
+});
+```
+
+## TypeScript Examples
+
+Using the library panels API from `public/app/features/library-panels/state/api.ts:1`:
+
+<CodeGroup>
+```typescript Search Panels
+import { getLibraryPanels } from 'app/features/library-panels/state/api';
+
+const result = await getLibraryPanels({
+  searchString: 'cpu',
+  typeFilter: ['timeseries', 'graph'],
+  folderFilterUIDs: ['folder-uid'],
+  perPage: 20,
+  page: 1
+});
+
+console.log(`Found ${result.totalCount} panels`);
+result.elements.forEach(panel => {
+  console.log(`${panel.name} (v${panel.version})`);
+});
+```
+
+```typescript Create Panel
+import { addLibraryPanel } from 'app/features/library-panels/state/api';
+import { PanelModelWithLibraryPanel } from 'app/features/library-panels/types';
+
+const newPanel: PanelModelWithLibraryPanel = {
+  type: 'timeseries',
+  title: 'My Library Panel',
+  libraryPanel: {
+    name: 'My Library Panel',
+    uid: '',  // Generated by server
+  },
+  targets: [{
+    refId: 'A',
+    datasource: { type: 'prometheus' },
+    expr: 'up'
+  }],
+  fieldConfig: {
+    defaults: { unit: 'short' },
+    overrides: []
+  }
+};
+
+const created = await addLibraryPanel(newPanel, 'folder-uid');
+console.log(`Created panel: ${created.uid}`);
+```
+
+```typescript Check Connections
+import { getConnectedDashboards } from 'app/features/library-panels/state/api';
+
+const dashboards = await getConnectedDashboards('panel-uid');
+
+if (dashboards) {
+  console.log(`Used in ${dashboards.length} dashboards:`);
+  dashboards.forEach(dash => {
+    console.log(`  - ${dash.title} (${dash.uid})`);
+  });
+}
+```
+</CodeGroup>
+
+## Best Practices
+
+<AccordionGroup>
+<Accordion title="When to Use Library Panels">
+**Good use cases**:
+- Standard metrics shown across multiple dashboards (CPU, memory, disk)
+- Compliance or SLA panels that must be consistent
+- Complex visualizations that teams frequently reuse
+
+**When not to use**:
+- One-off panels unique to a dashboard
+- Panels that need per-dashboard customization
+- Rapidly changing experimental visualizations
+</Accordion>
+
+<Accordion title="Naming Conventions">
+Use clear, descriptive names:
+- Include metric and visualization type: `CPU Usage - Timeseries`
+- Add scope if relevant: `K8s Pod Memory - Table`
+- Avoid generic names like `Panel 1` or `Graph`
+</Accordion>
+
+<Accordion title="Folder Organization">
+Organize library panels by:
+- **Team**: `SRE/`, `Data/`, `Platform/`
+- **Service**: `API/`, `Database/`, `Frontend/`
+- **Type**: `SLI Panels/`, `Debug Panels/`
+
+This makes them easier to discover and manage.
+</Accordion>
+
+<Accordion title="Version Management">
+- Test changes on a copy before updating widely-used panels
+- Document breaking changes in the description
+- Consider creating a new panel instead of updating for major changes
+</Accordion>
+
+<Accordion title="Performance Considerations">
+- Library panels are loaded individually, so many on one dashboard can slow loading
+- Each library panel tracks connections, which adds database queries
+- For high-traffic dashboards, consider unlinking frequently accessed panels
+</Accordion>
+</AccordionGroup>
+
+## Related Topics
+
+<CardGroup cols={2}>
+<Card title="Panels" icon="chart-line" href="/dashboards/panels">
+Understand panel configuration and options
+</Card>
+
+<Card title="Folders" icon="folder" href="/dashboards/folders">
+Organize library panels with folders
+</Card>
+
+<Card title="Dashboard Variables" icon="sliders" href="/dashboards/variables">
+Use variables in library panel queries
+</Card>
+
+<Card title="Permissions" icon="lock" href="/admin/permissions">
+Manage access to library panels
+</Card>
+</CardGroup>

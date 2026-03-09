@@ -1,4 +1,0 @@
-checking for broken links...
-
-[2K[1A[2K[Gfound 48 broken links in 25 files
-

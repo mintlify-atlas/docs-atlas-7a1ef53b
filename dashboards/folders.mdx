@@ -1,0 +1,523 @@
+---
+title: Folders
+description: Organize dashboards and manage permissions with folders
+---
+
+Folders provide a hierarchical structure for organizing dashboards, library panels, and other resources. They also serve as the primary mechanism for managing access permissions.
+
+## What are Folders?
+
+Folders in Grafana organize resources and control access:
+
+- **Hierarchical organization**: Group related dashboards together
+- **Permission boundary**: Control who can view, edit, or admin resources
+- **Search scope**: Filter searches by folder
+- **Resource container**: Store dashboards, library panels, alert rules
+
+<Note>
+Folders can contain sub-folders, creating a tree structure for complex organizations.
+</Note>
+
+## Creating Folders
+
+### Via the UI
+
+1. Navigate to **Dashboards**
+2. Click **New** → **New folder**
+3. Enter a folder name
+4. Optionally set a parent folder (for sub-folders)
+5. Configure initial permissions
+6. Click **Create**
+
+### Via the API
+
+<CodeGroup>
+```bash POST Create Folder
+curl -X POST \
+  'http://localhost:3000/api/folders' \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "metadata": {
+      "name": "my-team-folder"
+    },
+    "spec": {
+      "title": "My Team",
+      "description": "Dashboards for the platform team"
+    }
+  }'
+```
+
+```bash POST Create Sub-folder
+curl -X POST \
+  'http://localhost:3000/api/folders' \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "metadata": {
+      "name": "production-dashboards"
+    },
+    "spec": {
+      "title": "Production",
+      "parent": "my-team-folder"
+    }
+  }'
+```
+</CodeGroup>
+
+### TypeScript Interface
+
+```typescript
+interface Folder {
+  metadata: {
+    name: string;              // Unique identifier (UID)
+    namespace?: string;
+    labels?: Record<string, string>;
+    annotations?: Record<string, string>;
+    resourceVersion?: string;
+    creationTimestamp?: string;
+  };
+  spec: {
+    title: string;             // Display name
+    description?: string;
+    parent?: string;           // Parent folder UID
+  };
+}
+```
+
+## Managing Folders
+
+### Get Folder Information
+
+<CodeGroup>
+```bash GET Folder by UID
+curl 'http://localhost:3000/api/folders/{uid}'
+```
+
+```bash GET Folder Parents
+curl 'http://localhost:3000/api/folders/{uid}/parents'
+```
+
+```bash GET List All Folders
+curl 'http://localhost:3000/api/folders'
+```
+</CodeGroup>
+
+```typescript
+import { useGetFolderQuery, useGetFolderParentsQuery } from 'app/api/clients/folder/v1beta1';
+
+// Get folder details
+const { data: folder } = useGetFolderQuery({ name: 'folder-uid' });
+
+// Get parent hierarchy
+const { data: parents } = useGetFolderParentsQuery({ name: 'folder-uid' });
+```
+
+### Update Folder
+
+Update folder title, description, or parent:
+
+<CodeGroup>
+```bash PUT Update Folder
+curl -X PUT \
+  'http://localhost:3000/api/folders/{uid}' \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "metadata": {
+      "name": "folder-uid",
+      "resourceVersion": "123"  // Required for optimistic locking
+    },
+    "spec": {
+      "title": "Updated Title",
+      "description": "Updated description"
+    }
+  }'
+```
+
+```typescript TypeScript Update
+import { useUpdateFolderMutation } from 'app/api/clients/folder/v1beta1';
+
+const [updateFolder] = useUpdateFolderMutation();
+
+await updateFolder({
+  name: 'folder-uid',
+  folder: {
+    metadata: {
+      name: 'folder-uid',
+      resourceVersion: currentVersion
+    },
+    spec: {
+      title: 'Updated Title',
+      description: 'New description'
+    }
+  }
+});
+```
+</CodeGroup>
+
+### Delete Folder
+
+Deleting a folder also deletes its contents:
+
+<Warning>
+Deleting a folder removes all dashboards, library panels, and alert rules it contains. This action cannot be undone.
+</Warning>
+
+```bash
+curl -X DELETE 'http://localhost:3000/api/folders/{uid}'
+```
+
+Before deleting, check folder contents:
+
+```typescript
+import { useGetAffectedItemsQuery } from 'app/api/clients/folder/v1beta1';
+
+const { data: counts } = useGetAffectedItemsQuery({
+  folderUIDs: ['folder-uid'],
+  dashboardUIDs: []
+});
+
+console.log(`Will delete:`);
+console.log(`  ${counts.folders} folders`);
+console.log(`  ${counts.dashboards} dashboards`);
+console.log(`  ${counts.library_elements} library panels`);
+console.log(`  ${counts.alertrules} alert rules`);
+```
+
+### Folder Counts Interface
+
+```typescript
+interface DescendantCount {
+  folders: number;
+  dashboards: number;
+  library_elements: number;
+  alertrules: number;
+}
+```
+
+## Moving Dashboards Between Folders
+
+### Move Single Dashboard
+
+Update the dashboard's `folderUid` property:
+
+```typescript
+interface DashboardMeta {
+  folderUid?: string;
+  folderTitle?: string;
+  // ... other meta properties
+}
+
+// When saving a dashboard
+const dashboard = {
+  // ... dashboard model
+  meta: {
+    folderUid: 'target-folder-uid'
+  }
+};
+```
+
+### Move Multiple Dashboards
+
+<CodeGroup>
+```bash Move Dashboard API
+curl -X POST \
+  'http://localhost:3000/api/dashboards/db' \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "dashboard": { /* dashboard JSON */ },
+    "folderUid": "target-folder-uid",
+    "overwrite": true
+  }'
+```
+</CodeGroup>
+
+## Folder Permissions
+
+Folders are the primary unit for permission management in Grafana.
+
+### Permission Levels
+
+- **View**: Read-only access to dashboards and library panels
+- **Edit**: Create and modify dashboards and library panels
+- **Admin**: Manage folder settings, permissions, and deletion
+
+### Permission Inheritance
+
+Resources inherit permissions from their folder:
+
+- Dashboards in a folder inherit the folder's permissions
+- Library panels inherit permissions from their folder
+- Alert rules inherit permissions from their folder
+- Sub-folders inherit default permissions (can be overridden)
+
+<Note>
+Users need at least **View** permission on a folder to see dashboards within it.
+</Note>
+
+### Setting Permissions
+
+Permissions can be assigned to:
+
+- **Users**: Individual user accounts
+- **Teams**: Groups of users
+- **Roles**: Organization roles (Viewer, Editor, Admin)
+
+**Via UI**:
+
+1. Go to folder settings
+2. Navigate to **Permissions** tab
+3. Add users, teams, or roles
+4. Set permission level
+5. Save changes
+
+**Via API**:
+
+```bash
+curl -X POST \
+  'http://localhost:3000/api/folders/{uid}/permissions' \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "items": [
+      {
+        "role": "Viewer",
+        "permission": 1
+      },
+      {
+        "teamId": 2,
+        "permission": 2
+      },
+      {
+        "userId": 5,
+        "permission": 4
+      }
+    ]
+  }'
+```
+
+Permission values:
+- `1`: View
+- `2`: Edit  
+- `4`: Admin
+
+### Default Permissions
+
+New folders inherit default organization permissions:
+
+- **Viewers** role: View permission
+- **Editors** role: Edit permission  
+- **Admins** role: Admin permission
+
+You can override these defaults when creating or updating folders.
+
+## Folder Hierarchy
+
+### Parent-Child Relationships
+
+Folders can be nested to create hierarchies:
+
+```
+Platform Team/
+├── Production/
+│   ├── API Dashboards/
+│   └── Database Dashboards/
+└── Staging/
+    └── Test Dashboards/
+```
+
+### Navigation
+
+Breadcrumbs show the folder path:
+
+```typescript
+import { useGetFolderParentsQuery } from 'app/api/clients/folder/v1beta1';
+
+const { data: parents } = useGetFolderParentsQuery({ name: 'folder-uid' });
+
+// Renders breadcrumb: Home > Platform Team > Production > API Dashboards
+const breadcrumb = parents?.items.map(p => p.spec.title).join(' > ');
+```
+
+### Moving Folders
+
+Change a folder's parent by updating its `parent` field:
+
+```typescript
+import { useUpdateFolderMutation } from 'app/api/clients/folder/v1beta1';
+
+const [updateFolder] = useUpdateFolderMutation();
+
+await updateFolder({
+  name: 'child-folder-uid',
+  folder: {
+    metadata: { name: 'child-folder-uid' },
+    spec: {
+      title: 'Child Folder',
+      parent: 'new-parent-uid'  // Move to different parent
+    }
+  }
+});
+```
+
+## Searching Within Folders
+
+Filter search results by folder:
+
+```typescript
+import { getGrafanaSearcher } from 'app/features/search/service/searcher';
+
+const searcher = getGrafanaSearcher();
+
+// Search within specific folders
+const results = await searcher.search({
+  query: 'cpu usage',
+  kind: ['dashboard'],
+  location: 'folder-uid'  // Limit to this folder
+});
+```
+
+### Search API
+
+<CodeGroup>
+```bash Search in Folder
+curl 'http://localhost:3000/api/search?folderIds=1&query=cpu'
+```
+
+```bash List Folder Contents
+curl 'http://localhost:3000/api/search?folderIds=1&type=dash-db'
+```
+</CodeGroup>
+
+## Virtual Folders
+
+Grafana provides special virtual folders:
+
+- **General**: Default folder for dashboards without a folder
+- **Recent**: Recently viewed dashboards
+- **Starred**: User-starred dashboards
+
+These cannot be deleted or have permissions modified.
+
+## API Reference Summary
+
+<CodeGroup>
+```bash Create Folder
+POST /api/folders
+```
+
+```bash Get Folder
+GET /api/folders/{uid}
+```
+
+```bash Update Folder  
+PUT /api/folders/{uid}
+```
+
+```bash Delete Folder
+DELETE /api/folders/{uid}
+```
+
+```bash Get Parents
+GET /api/folders/{uid}/parents
+```
+
+```bash Get Counts
+GET /api/folders/{uid}/counts
+```
+
+```bash Set Permissions
+POST /api/folders/{uid}/permissions
+```
+
+```bash Get Permissions
+GET /api/folders/{uid}/permissions
+```
+</CodeGroup>
+
+## Best Practices
+
+<AccordionGroup>
+<Accordion title="Organize by Team and Environment">
+Structure folders to match your organization:
+
+```
+SRE/
+├── Production/
+├── Staging/
+└── Development/
+
+Data Engineering/
+├── Pipelines/
+└── Quality/
+```
+
+This makes ownership and access control clear.
+</Accordion>
+
+<Accordion title="Use Descriptive Names">
+- Avoid generic names like `Folder 1` or `Test`
+- Include scope: `API Production Dashboards`
+- Be consistent across similar folders
+</Accordion>
+
+<Accordion title="Set Permissions at Folder Level">
+Rather than setting permissions on individual dashboards:
+
+1. Create folders with appropriate permissions
+2. Place dashboards in correctly-permissioned folders
+3. Use teams for group-based access control
+
+This is easier to maintain than per-dashboard permissions.
+</Accordion>
+
+<Accordion title="Limit Nesting Depth">
+While Grafana supports deep hierarchies, keep it simple:
+
+- **Good**: 2-3 levels (Team → Environment → Service)
+- **Too deep**: 5+ levels become hard to navigate
+- Use dashboard tags for additional categorization
+</Accordion>
+
+<Accordion title="Document Folder Purpose">
+Use the description field to explain:
+
+- What dashboards belong here
+- Who owns this folder
+- Any special access considerations
+
+This helps teams navigate large Grafana instances.
+</Accordion>
+
+<Accordion title="Audit Before Deletion">
+Always check folder contents before deleting:
+
+```typescript
+const { data: counts } = useGetAffectedItemsQuery({
+  folderUIDs: ['folder-to-delete'],
+  dashboardUIDs: []
+});
+
+if (counts.dashboards > 0) {
+  console.warn(`Warning: Deleting ${counts.dashboards} dashboards`);
+}
+```
+</Accordion>
+</AccordionGroup>
+
+## Related Topics
+
+<CardGroup cols={2}>
+<Card title="Dashboards" icon="chart-line" href="/dashboards/overview">
+Create and manage dashboards within folders
+</Card>
+
+<Card title="Library Panels" icon="books" href="/dashboards/library-panels">
+Store reusable panels in folders
+</Card>
+
+<Card title="Permissions" icon="lock" href="/admin/permissions">
+Detailed permission model documentation
+</Card>
+
+<Card title="Teams" icon="users" href="/admin/teams">
+Manage team-based folder access
+</Card>
+</CardGroup>
