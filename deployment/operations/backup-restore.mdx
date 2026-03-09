@@ -1,0 +1,343 @@
+---
+title: Backup and restore
+description: Back up and restore your Grafana instance data
+keywords:
+  - grafana
+  - backup
+  - restore
+  - disaster recovery
+  - database
+---
+
+# Backup and restore
+
+Regular backups protect your Grafana configuration, dashboards, and data from loss or corruption. This guide covers what to back up, backup procedures, and restoration processes.
+
+## What to back up
+
+A complete Grafana backup includes several components:
+
+### Database
+
+The Grafana database contains:
+
+- Dashboards and dashboard versions
+- Users, teams, and organizations
+- Data sources and their configurations
+- Alert rules and notification channels
+- Folders and permissions
+- Preferences and settings
+- Annotations
+- API keys and service accounts
+
+**Database types:**
+
+- SQLite: Single file database (default)
+- PostgreSQL: External database server
+- MySQL: External database server
+
+### Configuration files
+
+Back up your configuration files:
+
+- `grafana.ini` or `custom.ini` - Main configuration
+- `ldap.toml` - LDAP configuration (if used)
+- Environment files with sensitive settings
+
+### Provisioning files
+
+If you use file-based provisioning, back up:
+
+- `conf/provisioning/datasources/` - Data source definitions
+- `conf/provisioning/dashboards/` - Dashboard providers
+- `conf/provisioning/notifiers/` - Alert notification channels
+- `conf/provisioning/plugins/` - Plugin configurations
+- `conf/provisioning/alerting/` - Alert rules and policies
+
+### Plugin data
+
+Some plugins store data in:
+
+- `data/plugins/` - Plugin files and data
+- Custom plugin configuration directories
+
+## Backup procedures
+
+### SQLite database backup
+
+For SQLite (default configuration), the database is a single file.
+
+**Locate the database:**
+
+The default location is defined in `grafana.ini`:
+
+```ini
+[database]
+type = sqlite3
+path = grafana.db
+```
+
+The path is relative to the data directory (`[paths].data`).
+
+**Backup the database:**
+
+```sh
+# Stop Grafana first to ensure consistency
+sudo systemctl stop grafana-server
+
+# Copy the database file
+sudo cp /var/lib/grafana/grafana.db /backup/grafana-$(date +%Y%m%d-%H%M%S).db
+
+# Restart Grafana
+sudo systemctl start grafana-server
+```
+
+For online backups without stopping Grafana, use SQLite's backup API or the `.backup` command in the SQLite CLI.
+
+### PostgreSQL database backup
+
+Use `pg_dump` to create consistent backups:
+
+```sh
+pg_dump -h localhost -U grafana -d grafana -F c -f /backup/grafana-$(date +%Y%m%d-%H%M%S).dump
+```
+
+Parameters:
+
+- `-h localhost` - Database host
+- `-U grafana` - Database user
+- `-d grafana` - Database name
+- `-F c` - Custom format (compressed)
+- `-f <FILE>` - Output file path
+
+**Automated daily backups:**
+
+```sh
+#!/bin/bash
+BACKUP_DIR="/backup/grafana"
+RETENTION_DAYS=30
+
+# Create backup
+pg_dump -h localhost -U grafana -d grafana -F c -f "${BACKUP_DIR}/grafana-$(date +%Y%m%d-%H%M%S).dump"
+
+# Remove old backups
+find "${BACKUP_DIR}" -name "grafana-*.dump" -mtime +${RETENTION_DAYS} -delete
+```
+
+Schedule with cron:
+
+```cron
+0 2 * * * /usr/local/bin/backup-grafana.sh
+```
+
+### MySQL database backup
+
+Use `mysqldump` to create backups:
+
+```sh
+mysqldump -h localhost -u grafana -p grafana --single-transaction --quick \
+  > /backup/grafana-$(date +%Y%m%d-%H%M%S).sql
+```
+
+Parameters:
+
+- `-h localhost` - Database host
+- `-u grafana` - Database user
+- `-p` - Prompt for password
+- `--single-transaction` - Consistent snapshot for InnoDB
+- `--quick` - Stream results without buffering
+
+### Configuration backup
+
+Back up configuration files:
+
+```sh
+BACKUP_DIR="/backup/grafana-config-$(date +%Y%m%d-%H%M%S)"
+mkdir -p "${BACKUP_DIR}"
+
+# Copy configuration
+cp /etc/grafana/grafana.ini "${BACKUP_DIR}/"
+cp /etc/grafana/ldap.toml "${BACKUP_DIR}/" 2>/dev/null || true
+
+# Copy provisioning files
+cp -r /etc/grafana/provisioning "${BACKUP_DIR}/"
+
+# Create archive
+tar -czf "${BACKUP_DIR}.tar.gz" -C /backup "$(basename ${BACKUP_DIR})"
+rm -rf "${BACKUP_DIR}"
+```
+
+### Complete backup script
+
+Combine database and configuration backups:
+
+```sh
+#!/bin/bash
+set -e
+
+BACKUP_ROOT="/backup/grafana"
+TIMESTAMP=$(date +%Y%m%d-%H%M%S)
+BACKUP_DIR="${BACKUP_ROOT}/${TIMESTAMP}"
+
+mkdir -p "${BACKUP_DIR}"
+
+echo "Starting Grafana backup: ${TIMESTAMP}"
+
+# Backup database (PostgreSQL example)
+echo "Backing up database..."
+pg_dump -h localhost -U grafana -d grafana -F c -f "${BACKUP_DIR}/database.dump"
+
+# Backup configuration
+echo "Backing up configuration..."
+cp /etc/grafana/grafana.ini "${BACKUP_DIR}/"
+cp -r /etc/grafana/provisioning "${BACKUP_DIR}/" 2>/dev/null || true
+
+# Backup plugins
+echo "Backing up plugins..."
+cp -r /var/lib/grafana/plugins "${BACKUP_DIR}/" 2>/dev/null || true
+
+# Create archive
+echo "Creating archive..."
+tar -czf "${BACKUP_ROOT}/grafana-${TIMESTAMP}.tar.gz" -C "${BACKUP_ROOT}" "${TIMESTAMP}"
+rm -rf "${BACKUP_DIR}"
+
+echo "Backup completed: ${BACKUP_ROOT}/grafana-${TIMESTAMP}.tar.gz"
+
+# Cleanup old backups (keep 30 days)
+find "${BACKUP_ROOT}" -name "grafana-*.tar.gz" -mtime +30 -delete
+```
+
+## Restore procedures
+
+### Restore SQLite database
+
+Restore from a SQLite backup:
+
+```sh
+# Stop Grafana
+sudo systemctl stop grafana-server
+
+# Backup current database
+sudo mv /var/lib/grafana/grafana.db /var/lib/grafana/grafana.db.old
+
+# Restore from backup
+sudo cp /backup/grafana-20260309-120000.db /var/lib/grafana/grafana.db
+
+# Set correct permissions
+sudo chown grafana:grafana /var/lib/grafana/grafana.db
+
+# Start Grafana
+sudo systemctl start grafana-server
+```
+
+### Restore PostgreSQL database
+
+Restore from a PostgreSQL backup:
+
+```sh
+# Drop and recreate database
+psql -h localhost -U postgres -c "DROP DATABASE grafana;"
+psql -h localhost -U postgres -c "CREATE DATABASE grafana OWNER grafana;"
+
+# Restore from backup
+pg_restore -h localhost -U grafana -d grafana /backup/grafana-20260309-120000.dump
+
+# Restart Grafana
+sudo systemctl restart grafana-server
+```
+
+### Restore MySQL database
+
+Restore from a MySQL backup:
+
+```sh
+# Drop and recreate database
+mysql -h localhost -u root -p -e "DROP DATABASE grafana;"
+mysql -h localhost -u root -p -e "CREATE DATABASE grafana CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;"
+
+# Restore from backup
+mysql -h localhost -u grafana -p grafana < /backup/grafana-20260309-120000.sql
+
+# Restart Grafana
+sudo systemctl restart grafana-server
+```
+
+### Restore configuration
+
+Restore configuration files:
+
+```sh
+# Extract backup
+tar -xzf /backup/grafana-config-20260309-120000.tar.gz -C /tmp
+
+# Stop Grafana
+sudo systemctl stop grafana-server
+
+# Restore configuration
+sudo cp /tmp/grafana-config-20260309-120000/grafana.ini /etc/grafana/
+sudo cp -r /tmp/grafana-config-20260309-120000/provisioning /etc/grafana/
+
+# Set correct permissions
+sudo chown -R root:grafana /etc/grafana
+
+# Start Grafana
+sudo systemctl start grafana-server
+
+# Cleanup
+rm -rf /tmp/grafana-config-20260309-120000
+```
+
+## Disaster recovery
+
+For disaster recovery, follow this sequence:
+
+1. Install Grafana with the same version as the backup
+2. Stop the Grafana service
+3. Restore the database
+4. Restore configuration files
+5. Restore provisioning files
+6. Restore plugins if needed
+7. Set correct file permissions
+8. Start Grafana and verify functionality
+
+## Backup best practices
+
+- **Automate backups** - Schedule regular automated backups
+- **Test restores** - Regularly test backup restoration procedures
+- **Off-site storage** - Store backups in a different location from your Grafana instance
+- **Encryption** - Encrypt backups containing sensitive data
+- **Retention policy** - Define and implement a backup retention policy
+- **Version compatibility** - Note the Grafana version when creating backups
+- **Monitor backups** - Alert on backup failures
+- **Document procedures** - Maintain up-to-date restoration documentation
+
+## Database-specific considerations
+
+### SQLite
+
+- Requires stopping Grafana for consistent backups (or use SQLite backup API)
+- Simple single-file backup and restore
+- Not recommended for high-availability deployments
+- Limited to single-instance deployments
+
+### PostgreSQL
+
+- Supports online backups with `pg_dump`
+- Point-in-time recovery with WAL archiving
+- Recommended for production deployments
+- Supports high-availability configurations
+
+### MySQL
+
+- Supports online backups with `mysqldump --single-transaction`
+- Binary log for point-in-time recovery
+- Suitable for production deployments
+- Supports replication for high availability
+
+Refer to `conf/defaults.ini:139` for database configuration options.
+
+## Next steps
+
+- Configure [monitoring](./monitoring) to track backup success
+- Review [high availability](./high-availability) for production deployments
+- Plan [upgrade procedures](./upgrading) before major version changes

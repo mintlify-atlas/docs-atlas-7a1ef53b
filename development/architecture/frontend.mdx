@@ -1,0 +1,538 @@
+---
+title: Frontend architecture
+description: Deep dive into Grafana's React and Redux frontend architecture
+---
+
+# Frontend architecture
+
+Grafana's frontend is built with TypeScript, React, and Redux Toolkit, following modern React patterns and a feature-based architecture.
+
+## Directory structure
+
+The frontend code lives in `public/app/`:
+
+| Directory | Purpose |
+|-----------|----------|
+| `public/app/core/` | Shared services, components, utilities |
+| `public/app/features/` | Feature code by domain (dashboard, alerting, explore) |
+| `public/app/plugins/` | Built-in plugins (many are Yarn workspaces) |
+| `public/app/types/` | TypeScript type definitions |
+| `public/app/store/` | Redux store configuration |
+| `public/app/routes/` | Application routing |
+| `public/app/api/` | API client definitions |
+
+## Application initialization
+
+The app bootstraps in `public/app/app.ts`:
+
+```typescript
+export class GrafanaApp {
+  async init() {
+    // 1. Pre-init tasks
+    await preInitTasks();
+    
+    // 2. Initialize i18n (internationalization)
+    await initializeI18n(...);
+    
+    // 3. Set up global services
+    setBackendSrv(backendSrv);
+    setDataSourceSrv(dataSourceSrv);
+    setLocationSrv(locationService);
+    
+    // 4. Configure Redux store
+    configureStore();
+    
+    // 5. Register plugin infrastructure
+    initSystemJSHooks();
+    preloadPlugins(await getAppPluginsToPreload());
+    
+    // 6. Initialize feature modules
+    initAlerting();
+    
+    // 7. Render React app
+    const root = createRoot(document.getElementById('reactRoot')!);
+    root.render(createElement(AppWrapper, { context: this.context }));
+    
+    // 8. Post-init tasks
+    await postInitTasks();
+  }
+}
+```
+
+## State management with Redux Toolkit
+
+Grafana uses Redux Toolkit (RTK) for state management, moving away from legacy Redux patterns.
+
+### Store configuration
+
+The store is configured in `public/app/store/configureStore.ts`:
+
+```typescript
+import { configureStore as reduxConfigureStore } from '@reduxjs/toolkit';
+
+export function configureStore(initialState?: Partial<StoreState>) {
+  const store = reduxConfigureStore({
+    reducer: createRootReducer(),
+    middleware: (getDefaultMiddleware) =>
+      getDefaultMiddleware({ 
+        thunk: true, 
+        serializableCheck: false, 
+        immutableCheck: false 
+      }).concat(
+        listenerMiddleware.middleware,
+        alertingApi.middleware,
+        publicDashboardApi.middleware,
+        // ... other API middleware
+        ...allApiClientMiddleware,
+      ),
+    devTools: process.env.NODE_ENV !== 'production',
+    preloadedState: {
+      navIndex: buildInitialState(),
+      ...initialState,
+    },
+  });
+  
+  setStore(store);
+  return store;
+}
+```
+
+### Redux Toolkit patterns
+
+#### Modern slices (preferred)
+
+Use RTK's `createSlice` for new features:
+
+```typescript
+import { createSlice, PayloadAction } from '@reduxjs/toolkit';
+
+interface BrowseDashboardsState {
+  selectedItems: Record<string, boolean>;
+  openFolders: Record<string, boolean>;
+}
+
+const initialState: BrowseDashboardsState = {
+  selectedItems: {},
+  openFolders: {},
+};
+
+const browseDashboardsSlice = createSlice({
+  name: 'browseDashboards',
+  initialState,
+  reducers: {
+    setSelectedItems: (state, action: PayloadAction<Record<string, boolean>>) => {
+      state.selectedItems = action.payload;
+    },
+    toggleFolder: (state, action: PayloadAction<string>) => {
+      const uid = action.payload;
+      state.openFolders[uid] = !state.openFolders[uid];
+    },
+  },
+});
+
+export const { setSelectedItems, toggleFolder } = browseDashboardsSlice.actions;
+export const browseDashboardsReducer = browseDashboardsSlice.reducer;
+```
+
+#### RTK Query for data fetching
+
+Use RTK Query for API calls:
+
+```typescript
+import { createApi } from '@reduxjs/toolkit/query/react';
+import { baseQuery } from 'app/api/clients/legacy';
+
+export const browseDashboardsAPI = createApi({
+  reducerPath: 'browseDashboardsAPI',
+  baseQuery: baseQuery(),
+  tagTypes: ['Dashboards', 'Folders'],
+  endpoints: (builder) => ({
+    getDashboards: builder.query<Dashboard[], { folderUid?: string }>({
+      query: ({ folderUid }) => ({
+        url: '/api/search',
+        params: { folderUids: folderUid, type: 'dash-db' },
+      }),
+      providesTags: ['Dashboards'],
+    }),
+    
+    deleteDashboard: builder.mutation<void, string>({
+      query: (uid) => ({
+        url: `/api/dashboards/uid/${uid}`,
+        method: 'DELETE',
+      }),
+      invalidatesTags: ['Dashboards'],
+    }),
+  }),
+});
+
+export const { useGetDashboardsQuery, useDeleteDashboardMutation } = browseDashboardsAPI;
+```
+
+Usage in components:
+
+```typescript
+function DashboardList() {
+  const { data: dashboards, isLoading, error } = useGetDashboardsQuery({ folderUid: 'abc123' });
+  const [deleteDashboard] = useDeleteDashboardMutation();
+  
+  if (isLoading) return <Spinner />;
+  if (error) return <ErrorMessage error={error} />;
+  
+  return (
+    <div>
+      {dashboards.map(dash => (
+        <div key={dash.uid}>
+          {dash.title}
+          <button onClick={() => deleteDashboard(dash.uid)}>Delete</button>
+        </div>
+      ))}
+    </div>
+  );
+}
+```
+
+### Global store access
+
+The global store is available via `public/app/store/store.ts`:
+
+```typescript
+import { store } from 'app/store/store';
+
+// Get current state
+const state = store.getState();
+
+// Dispatch actions
+store.dispatch(setSelectedItems({ 'uid1': true }));
+```
+
+## React patterns
+
+### Function components with hooks (preferred)
+
+```typescript
+import { useState, useEffect } from 'react';
+import { useSelector, useDispatch } from 'react-redux';
+
+interface Props {
+  dashboardUid: string;
+}
+
+export function DashboardSettings({ dashboardUid }: Props) {
+  const dispatch = useDispatch();
+  const dashboard = useSelector((state: StoreState) => 
+    state.dashboard.dashboards[dashboardUid]
+  );
+  const [isEditing, setIsEditing] = useState(false);
+  
+  useEffect(() => {
+    // Load dashboard on mount
+    dispatch(loadDashboard(dashboardUid));
+  }, [dashboardUid, dispatch]);
+  
+  return (
+    <div>
+      <h2>{dashboard?.title}</h2>
+      <Button onClick={() => setIsEditing(true)}>Edit</Button>
+    </div>
+  );
+}
+```
+
+### Styling with Emotion
+
+Use `useStyles2` for CSS-in-JS with Emotion:
+
+```typescript
+import { css } from '@emotion/css';
+import { GrafanaTheme2 } from '@grafana/data';
+import { useStyles2 } from '@grafana/ui';
+
+function MyComponent() {
+  const styles = useStyles2(getStyles);
+  
+  return <div className={styles.container}>Content</div>;
+}
+
+const getStyles = (theme: GrafanaTheme2) => ({
+  container: css({
+    padding: theme.spacing(2),
+    backgroundColor: theme.colors.background.primary,
+    borderRadius: theme.shape.radius.default,
+  }),
+});
+```
+
+**Key styling principles:**
+- Use theme values, not hardcoded colors
+- Responsive to theme changes (light/dark mode)
+- Type-safe style definitions
+
+## Feature-based architecture
+
+Features are organized in `public/app/features/`:
+
+```
+public/app/features/dashboard/
+├── api/               # API clients
+├── components/        # React components
+├── containers/        # Connected components
+├── state/            # Redux state (actions, reducers, selectors)
+├── services/         # Business logic
+├── types/            # TypeScript types
+├── utils/            # Utilities
+└── routes.ts         # Feature routing
+```
+
+### Feature module example
+
+```typescript
+// features/dashboard/state/actions.ts
+export const loadDashboard = (uid: string) => async (dispatch: ThunkDispatch) => {
+  dispatch(setLoading(true));
+  try {
+    const dashboard = await getDashboardAPI(uid);
+    dispatch(setDashboard(dashboard));
+  } catch (error) {
+    dispatch(setError(error));
+  } finally {
+    dispatch(setLoading(false));
+  }
+};
+
+// features/dashboard/components/DashboardPage.tsx
+export function DashboardPage() {
+  const dispatch = useDispatch();
+  const { uid } = useParams<{ uid: string }>();
+  
+  useEffect(() => {
+    dispatch(loadDashboard(uid));
+  }, [uid, dispatch]);
+  
+  return <DashboardGrid />;
+}
+```
+
+## Core services
+
+Shared services live in `public/app/core/services/`:
+
+### Backend service
+
+```typescript
+// core/services/backend_srv.ts
+class BackendSrv {
+  async get(url: string, params?: any) {
+    return this.request({ url, params, method: 'GET' });
+  }
+  
+  async post(url: string, data?: any) {
+    return this.request({ url, data, method: 'POST' });
+  }
+  
+  async request(options: BackendSrvRequest) {
+    // Handle auth, retries, errors
+  }
+}
+
+export const backendSrv = new BackendSrv();
+```
+
+### Data source service
+
+```typescript
+// features/plugins/datasource_srv.ts
+class DatasourceSrv {
+  init(datasources: DataSourceInstanceSettings[], defaultDatasource: string) {
+    // Initialize datasources
+  }
+  
+  get(uid: string): Promise<DataSourceApi> {
+    // Get datasource instance
+  }
+  
+  query(request: DataQueryRequest): Observable<PanelData> {
+    // Execute query across datasources
+  }
+}
+```
+
+### Location service
+
+```typescript
+import { locationService } from '@grafana/runtime';
+
+// Navigate
+locationService.push('/dashboard/abc123');
+
+// Get query params
+const params = locationService.getSearchObject();
+
+// Update query params
+locationService.partial({ from: 'now-1h', to: 'now' });
+```
+
+## Plugin system
+
+Frontend plugins are loaded dynamically using SystemJS.
+
+### Plugin loading
+
+```typescript
+// features/plugins/importPanelPlugin.ts
+export async function importPanelPlugin(id: string): Promise<PanelPlugin> {
+  // Check cache
+  if (panelPluginCache[id]) {
+    return panelPluginCache[id];
+  }
+  
+  // Load via SystemJS
+  const module = await SystemJS.import(`/public/plugins/${id}/module.js`);
+  const plugin = module.plugin as PanelPlugin;
+  
+  panelPluginCache[id] = plugin;
+  return plugin;
+}
+```
+
+### Plugin hooks
+
+Extend functionality with plugin hooks:
+
+```typescript
+// Use plugin components
+const { component, isLoading } = usePluginComponent('myapp/extension');
+
+// Use plugin links
+const { links } = usePluginLinks('grafana/dashboard/panel/menu');
+
+// Use plugin functions
+const { invoke } = usePluginFunctions('myapp/data-transformer');
+```
+
+## Routing
+
+Routing uses React Router in `public/app/routes/`:
+
+```typescript
+import { Route, Switch } from 'react-router-dom';
+
+function AppRoutes() {
+  return (
+    <Switch>
+      <Route path="/dashboard/:uid" component={DashboardPage} />
+      <Route path="/d/:uid/:slug" component={DashboardPage} />
+      <Route path="/explore" component={ExplorePage} />
+      <Route path="/alerting" component={AlertingPage} />
+    </Switch>
+  );
+}
+```
+
+## Testing patterns
+
+### Component tests with React Testing Library
+
+```typescript
+import { render, screen, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+
+describe('DashboardSettings', () => {
+  it('should render dashboard title', async () => {
+    render(<DashboardSettings dashboardUid="abc123" />);
+    
+    await waitFor(() => {
+      expect(screen.getByText('My Dashboard')).toBeInTheDocument();
+    });
+  });
+  
+  it('should save changes on submit', async () => {
+    const user = userEvent.setup();
+    render(<DashboardSettings dashboardUid="abc123" />);
+    
+    const saveButton = screen.getByRole('button', { name: /save/i });
+    await user.click(saveButton);
+    
+    expect(mockSaveDashboard).toHaveBeenCalled();
+  });
+});
+```
+
+Run tests:
+
+```bash
+yarn test path/to/file
+yarn test -t "test pattern"
+yarn test -u  # Update snapshots
+```
+
+## Shared packages
+
+Reusable libraries in `packages/`:
+
+- **`@grafana/data`** - Data structures, transformations, utilities
+- **`@grafana/ui`** - React component library
+- **`@grafana/runtime`** - Runtime services and APIs
+- **`@grafana/schema`** - CUE-generated TypeScript types
+- **`@grafana/scenes`** - Dashboard scene framework
+
+```typescript
+import { PanelData, LoadingState } from '@grafana/data';
+import { Button, Input, useStyles2 } from '@grafana/ui';
+import { getBackendSrv, locationService } from '@grafana/runtime';
+```
+
+## Performance patterns
+
+### Code splitting
+
+```typescript
+import { lazy, Suspense } from 'react';
+
+const DashboardPage = lazy(() => import('./features/dashboard/DashboardPage'));
+
+function App() {
+  return (
+    <Suspense fallback={<Spinner />}>
+      <DashboardPage />
+    </Suspense>
+  );
+}
+```
+
+### Memoization
+
+```typescript
+import { useMemo, useCallback } from 'react';
+
+function DashboardList({ dashboards }: Props) {
+  const filteredDashboards = useMemo(
+    () => dashboards.filter(d => d.starred),
+    [dashboards]
+  );
+  
+  const handleClick = useCallback(
+    (uid: string) => {
+      dispatch(selectDashboard(uid));
+    },
+    [dispatch]
+  );
+  
+  return <List items={filteredDashboards} onItemClick={handleClick} />;
+}
+```
+
+## Key patterns summary
+
+- **Redux Toolkit** - Modern Redux with slices and RTK Query
+- **Function components** - Hooks over class components
+- **Emotion styling** - Theme-aware CSS-in-JS
+- **Feature modules** - Organized by domain, not by type
+- **TypeScript** - Type safety throughout
+- **SystemJS plugins** - Dynamic plugin loading
+- **React Testing Library** - User-centric component tests
+
+## Related documentation
+
+- [Backend architecture](./backend.mdx)
+- [Plugin architecture](./plugins.mdx)
+- [Testing guide](/development/testing)

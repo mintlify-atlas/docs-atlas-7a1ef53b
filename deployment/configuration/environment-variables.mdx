@@ -1,0 +1,409 @@
+---
+title: Environment Variables
+description: Configure Grafana using environment variables to override configuration file settings
+---
+
+Grafana supports configuration through environment variables, which is particularly useful for containerized deployments, cloud environments, and keeping sensitive credentials out of configuration files.
+
+## Environment Variable Format
+
+All configuration file settings can be overridden using environment variables with this format:
+
+```bash
+GF_<SectionName>_<KeyName>=<value>
+```
+
+### Naming Convention
+
+- Prefix: `GF_`
+- Section name: Uppercase with underscores replacing dots
+- Key name: Uppercase with underscores replacing hyphens
+
+### Examples
+
+| Configuration File | Environment Variable |
+|-------------------|---------------------|
+| `[server]` `http_port` | `GF_SERVER_HTTP_PORT` |
+| `[database]` `type` | `GF_DATABASE_TYPE` |
+| `[database]` `max_open_conn` | `GF_DATABASE_MAX_OPEN_CONN` |
+| `[auth.github]` `client_id` | `GF_AUTH_GITHUB_CLIENT_ID` |
+| `[auth.google]` `enabled` | `GF_AUTH_GOOGLE_ENABLED` |
+| `[security]` `admin_password` | `GF_SECURITY_ADMIN_PASSWORD` |
+| `[smtp]` `from_address` | `GF_SMTP_FROM_ADDRESS` |
+
+## Common Environment Variables
+
+### Server Configuration
+
+```bash
+# HTTP server settings
+export GF_SERVER_PROTOCOL=http
+export GF_SERVER_HTTP_ADDR=0.0.0.0
+export GF_SERVER_HTTP_PORT=3000
+export GF_SERVER_DOMAIN=localhost
+export GF_SERVER_ROOT_URL=https://grafana.example.com/
+export GF_SERVER_SERVE_FROM_SUB_PATH=false
+export GF_SERVER_ROUTER_LOGGING=false
+export GF_SERVER_ENABLE_GZIP=false
+
+# HTTPS configuration
+export GF_SERVER_PROTOCOL=https
+export GF_SERVER_CERT_FILE=/etc/grafana/ssl/grafana.crt
+export GF_SERVER_CERT_KEY=/etc/grafana/ssl/grafana.key
+export GF_SERVER_MIN_TLS_VERSION=TLS1.2
+```
+
+### Database Configuration
+
+```bash
+# PostgreSQL
+export GF_DATABASE_TYPE=postgres
+export GF_DATABASE_HOST=postgres.example.com:5432
+export GF_DATABASE_NAME=grafana
+export GF_DATABASE_USER=grafana
+export GF_DATABASE_PASSWORD=secretpassword
+export GF_DATABASE_SSL_MODE=require
+export GF_DATABASE_MAX_OPEN_CONN=100
+export GF_DATABASE_MAX_IDLE_CONN=50
+export GF_DATABASE_CONN_MAX_LIFETIME=14400
+
+# MySQL
+export GF_DATABASE_TYPE=mysql
+export GF_DATABASE_HOST=mysql.example.com:3306
+export GF_DATABASE_NAME=grafana
+export GF_DATABASE_USER=grafana
+export GF_DATABASE_PASSWORD=secretpassword
+export GF_DATABASE_SSL_MODE=true
+
+# SQLite (default)
+export GF_DATABASE_TYPE=sqlite3
+export GF_DATABASE_PATH=grafana.db
+
+# Connection URL format (alternative)
+export GF_DATABASE_URL=postgres://user:password@host:5432/database
+```
+
+### Security Configuration
+
+```bash
+# Admin credentials
+export GF_SECURITY_ADMIN_USER=admin
+export GF_SECURITY_ADMIN_PASSWORD=changeme
+export GF_SECURITY_ADMIN_EMAIL=admin@example.com
+export GF_SECURITY_SECRET_KEY=SW2YcwTIb9zpOOhoPsMm
+
+# Security options
+export GF_SECURITY_DISABLE_INITIAL_ADMIN_CREATION=false
+export GF_SECURITY_DISABLE_GRAVATAR=false
+export GF_SECURITY_COOKIE_SECURE=true
+export GF_SECURITY_COOKIE_SAMESITE=lax
+export GF_SECURITY_ALLOW_EMBEDDING=false
+export GF_SECURITY_STRICT_TRANSPORT_SECURITY=true
+export GF_SECURITY_STRICT_TRANSPORT_SECURITY_MAX_AGE_SECONDS=86400
+
+# Brute force protection
+export GF_SECURITY_DISABLE_BRUTE_FORCE_LOGIN_PROTECTION=false
+export GF_SECURITY_BRUTE_FORCE_LOGIN_PROTECTION_MAX_ATTEMPTS=5
+```
+
+### Authentication Providers
+
+**GitHub OAuth:**
+```bash
+export GF_AUTH_GITHUB_ENABLED=true
+export GF_AUTH_GITHUB_ALLOW_SIGN_UP=true
+export GF_AUTH_GITHUB_CLIENT_ID=your_github_client_id
+export GF_AUTH_GITHUB_CLIENT_SECRET=your_github_client_secret
+export GF_AUTH_GITHUB_SCOPES=user:email,read:org
+export GF_AUTH_GITHUB_AUTH_URL=https://github.com/login/oauth/authorize
+export GF_AUTH_GITHUB_TOKEN_URL=https://github.com/login/oauth/access_token
+export GF_AUTH_GITHUB_API_URL=https://api.github.com/user
+export GF_AUTH_GITHUB_ALLOWED_ORGANIZATIONS=myorg
+```
+
+**Google OAuth:**
+```bash
+export GF_AUTH_GOOGLE_ENABLED=true
+export GF_AUTH_GOOGLE_ALLOW_SIGN_UP=true
+export GF_AUTH_GOOGLE_CLIENT_ID=your_google_client_id
+export GF_AUTH_GOOGLE_CLIENT_SECRET=your_google_client_secret
+export GF_AUTH_GOOGLE_SCOPES=openid email profile
+export GF_AUTH_GOOGLE_AUTH_URL=https://accounts.google.com/o/oauth2/v2/auth
+export GF_AUTH_GOOGLE_TOKEN_URL=https://oauth2.googleapis.com/token
+export GF_AUTH_GOOGLE_ALLOWED_DOMAINS=example.com
+```
+
+**Azure AD:**
+```bash
+export GF_AUTH_AZUREAD_NAME=Azure AD
+export GF_AUTH_AZUREAD_ENABLED=true
+export GF_AUTH_AZUREAD_ALLOW_SIGN_UP=true
+export GF_AUTH_AZUREAD_CLIENT_ID=your_client_id
+export GF_AUTH_AZUREAD_CLIENT_SECRET=your_client_secret
+export GF_AUTH_AZUREAD_SCOPES=openid email profile
+export GF_AUTH_AZUREAD_AUTH_URL=https://login.microsoftonline.com/<tenant-id>/oauth2/v2.0/authorize
+export GF_AUTH_AZUREAD_TOKEN_URL=https://login.microsoftonline.com/<tenant-id>/oauth2/v2.0/token
+```
+
+**Generic OAuth:**
+```bash
+export GF_AUTH_GENERIC_OAUTH_ENABLED=true
+export GF_AUTH_GENERIC_OAUTH_NAME=OAuth
+export GF_AUTH_GENERIC_OAUTH_ALLOW_SIGN_UP=true
+export GF_AUTH_GENERIC_OAUTH_CLIENT_ID=your_client_id
+export GF_AUTH_GENERIC_OAUTH_CLIENT_SECRET=your_client_secret
+export GF_AUTH_GENERIC_OAUTH_SCOPES=openid email profile
+export GF_AUTH_GENERIC_OAUTH_AUTH_URL=https://provider.com/oauth/authorize
+export GF_AUTH_GENERIC_OAUTH_TOKEN_URL=https://provider.com/oauth/token
+export GF_AUTH_GENERIC_OAUTH_API_URL=https://provider.com/oauth/userinfo
+```
+
+**LDAP:**
+```bash
+export GF_AUTH_LDAP_ENABLED=true
+export GF_AUTH_LDAP_CONFIG_FILE=/etc/grafana/ldap.toml
+export GF_AUTH_LDAP_ALLOW_SIGN_UP=true
+```
+
+### SMTP Configuration
+
+```bash
+export GF_SMTP_ENABLED=true
+export GF_SMTP_HOST=smtp.example.com:587
+export GF_SMTP_USER=grafana@example.com
+export GF_SMTP_PASSWORD=smtp_password
+export GF_SMTP_FROM_ADDRESS=grafana@example.com
+export GF_SMTP_FROM_NAME=Grafana
+export GF_SMTP_SKIP_VERIFY=false
+export GF_SMTP_STARTTLS_POLICY=MandatoryStartTLS
+export GF_SMTP_EHLO_IDENTITY=grafana.example.com
+```
+
+### Paths Configuration
+
+```bash
+export GF_PATHS_DATA=/var/lib/grafana
+export GF_PATHS_LOGS=/var/log/grafana
+export GF_PATHS_PLUGINS=/var/lib/grafana/plugins
+export GF_PATHS_PROVISIONING=/etc/grafana/provisioning
+export GF_PATHS_TEMP_DATA_LIFETIME=24h
+```
+
+### Logging Configuration
+
+```bash
+# Log mode: console, file, syslog
+export GF_LOG_MODE="console file"
+export GF_LOG_LEVEL=info
+export GF_LOG_FILTERS=""
+
+# Console logging
+export GF_LOG_CONSOLE_LEVEL=info
+export GF_LOG_CONSOLE_FORMAT=console
+
+# File logging
+export GF_LOG_FILE_LEVEL=info
+export GF_LOG_FILE_FORMAT=text
+export GF_LOG_FILE_LOG_ROTATE=true
+export GF_LOG_FILE_MAX_LINES=1000000
+export GF_LOG_FILE_MAX_DAYS=7
+export GF_LOG_FILE_DAILY_ROTATE=true
+```
+
+### User Management
+
+```bash
+export GF_USERS_ALLOW_SIGN_UP=false
+export GF_USERS_ALLOW_ORG_CREATE=false
+export GF_USERS_AUTO_ASSIGN_ORG=true
+export GF_USERS_AUTO_ASSIGN_ORG_ID=1
+export GF_USERS_AUTO_ASSIGN_ORG_ROLE=Viewer
+export GF_USERS_VERIFY_EMAIL_ENABLED=false
+export GF_USERS_DEFAULT_THEME=dark
+export GF_USERS_DEFAULT_LANGUAGE=en-US
+```
+
+### Analytics Configuration
+
+```bash
+export GF_ANALYTICS_REPORTING_ENABLED=false
+export GF_ANALYTICS_CHECK_FOR_UPDATES=false
+export GF_ANALYTICS_CHECK_FOR_PLUGIN_UPDATES=false
+export GF_ANALYTICS_GOOGLE_ANALYTICS_UA_ID=""
+export GF_ANALYTICS_GOOGLE_ANALYTICS_4_ID=""
+```
+
+## Docker Environment Variables
+
+When running Grafana in Docker, pass environment variables using the `-e` flag:
+
+```bash
+docker run -d \
+  -p 3000:3000 \
+  -e "GF_SERVER_ROOT_URL=https://grafana.example.com" \
+  -e "GF_SECURITY_ADMIN_PASSWORD=secret" \
+  -e "GF_DATABASE_TYPE=postgres" \
+  -e "GF_DATABASE_HOST=postgres:5432" \
+  -e "GF_DATABASE_NAME=grafana" \
+  -e "GF_DATABASE_USER=grafana" \
+  -e "GF_DATABASE_PASSWORD=grafana" \
+  --name=grafana \
+  grafana/grafana:latest
+```
+
+Or use a `.env` file with Docker Compose:
+
+```yaml
+# docker-compose.yml
+version: '3'
+services:
+  grafana:
+    image: grafana/grafana:latest
+    ports:
+      - "3000:3000"
+    env_file:
+      - .env
+    volumes:
+      - grafana-storage:/var/lib/grafana
+
+volumes:
+  grafana-storage:
+```
+
+```bash
+# .env file
+GF_SERVER_ROOT_URL=https://grafana.example.com
+GF_SECURITY_ADMIN_PASSWORD=secret
+GF_DATABASE_TYPE=postgres
+GF_DATABASE_HOST=postgres:5432
+GF_DATABASE_NAME=grafana
+GF_DATABASE_USER=grafana
+GF_DATABASE_PASSWORD=grafana
+```
+
+## Kubernetes Deployment
+
+For Kubernetes, use ConfigMaps and Secrets:
+
+```yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-config
+data:
+  GF_SERVER_ROOT_URL: "https://grafana.example.com"
+  GF_DATABASE_TYPE: "postgres"
+  GF_DATABASE_HOST: "postgres:5432"
+  GF_DATABASE_NAME: "grafana"
+  GF_USERS_ALLOW_SIGN_UP: "false"
+  GF_AUTH_GITHUB_ENABLED: "true"
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: grafana-secrets
+type: Opaque
+stringData:
+  GF_SECURITY_ADMIN_PASSWORD: "secret"
+  GF_DATABASE_PASSWORD: "grafana"
+  GF_AUTH_GITHUB_CLIENT_SECRET: "github_secret"
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: grafana
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: grafana
+  template:
+    metadata:
+      labels:
+        app: grafana
+    spec:
+      containers:
+      - name: grafana
+        image: grafana/grafana:latest
+        ports:
+        - containerPort: 3000
+        envFrom:
+        - configMapRef:
+            name: grafana-config
+        - secretRef:
+            name: grafana-secrets
+```
+
+## Special Character Handling
+
+When using environment variables with special characters, proper shell quoting may be required:
+
+```bash
+# Bash/Shell quoting
+export GF_DATABASE_PASSWORD='p@ssw0rd!#'
+export GF_SECURITY_SECRET_KEY="my-secret-key-123"
+
+# Docker
+docker run -e 'GF_DATABASE_PASSWORD=p@ssw0rd!#' grafana/grafana
+
+# Kubernetes (base64 encoded in secrets)
+echo -n 'p@ssw0rd!#' | base64
+```
+
+## Verifying Environment Variables
+
+To verify which environment variables are being used:
+
+```bash
+# List all GF_ environment variables
+env | grep GF_
+
+# In Docker
+docker exec grafana env | grep GF_
+
+# Check Grafana logs for configuration
+docker logs grafana | grep -i config
+```
+
+## Precedence and Overrides
+
+Configuration values are applied in this order (later overrides earlier):
+
+1. Default values from `conf/defaults.ini`
+2. Custom configuration from `conf/custom.ini`
+3. **Environment variables** (highest priority)
+4. Command-line arguments
+
+Environment variables always take precedence over configuration file settings.
+
+## Best Practices
+
+1. **Use environment variables for secrets** - Never commit passwords to configuration files
+2. **Document your variables** - Keep a list of required environment variables
+3. **Use secret management** - Leverage Kubernetes Secrets, AWS Secrets Manager, or HashiCorp Vault
+4. **Validate before deployment** - Test configuration in non-production environments
+5. **Avoid hardcoding** - Use variable interpolation where possible
+6. **Use .env files locally** - Keep development configuration consistent
+7. **Set defaults** - Provide sensible defaults for non-sensitive variables
+
+## Troubleshooting
+
+**Environment variables not taking effect:**
+- Verify the variable name follows the `GF_SECTION_KEY` format
+- Check for typos in variable names
+- Ensure variables are exported (use `export` in shell)
+- Restart Grafana after changing environment variables
+
+**Values not being parsed correctly:**
+- Check for proper quoting of special characters
+- Verify boolean values are `true` or `false` (lowercase)
+- Ensure numeric values don't have quotes
+
+**Debug configuration:**
+```bash
+# Enable debug logging
+export GF_LOG_LEVEL=debug
+
+# Check applied configuration
+grafana-server --config=/dev/null cfg:default
+```

@@ -1,0 +1,541 @@
+---
+title: Silences
+description: Temporarily mute alert notifications in Grafana
+---
+
+Silences temporarily suppress notifications for alerts that match specific criteria. They're useful for planned maintenance, known issues, or reducing noise during incidents.
+
+## Silence Structure
+
+<CodeGroup>
+
+```typescript Silence Definition
+interface SilenceFormFields {
+  id: string;              // Silence ID (generated)
+  
+  // Time range
+  startsAt: string;        // ISO 8601 timestamp
+  endsAt: string;          // ISO 8601 timestamp
+  timeZone: TimeZone;      // Display timezone
+  duration: string;        // Human-readable duration
+  
+  // Matching
+  matchers: MatcherFieldValue[];
+  
+  // Metadata
+  comment: string;         // Required: why this silence exists
+  createdBy: string;       // Creator username
+}
+```
+
+```typescript Matcher
+interface MatcherFieldValue {
+  name: string;            // Label name to match
+  value: string;           // Label value
+  operator: MatcherOperator;
+}
+
+type MatcherOperator =
+  | '='   // Equal
+  | '!='  // Not equal
+  | '=~'  // Regex match
+  | '!~'; // Regex not match
+```
+
+</CodeGroup>
+
+## Silence States
+
+Silences transition through different states:
+
+<Steps>
+  <Step title="Pending">
+    `startsAt` is in the future. Silence is scheduled but not yet active.
+  </Step>
+  
+  <Step title="Active">
+    Current time is between `startsAt` and `endsAt`. Notifications are suppressed.
+  </Step>
+  
+  <Step title="Expired">
+    `endsAt` is in the past. Silence is no longer active.
+  </Step>
+</Steps>
+
+## Label Matchers
+
+Silences use matchers to select which alerts to suppress:
+
+<CodeGroup>
+
+```typescript Exact Match
+matchers: [
+  {
+    name: 'alertname',
+    operator: '=',
+    value: 'HighCPU'
+  }
+]
+// Silences all alerts with alertname="HighCPU"
+```
+
+```typescript Multiple Matchers (AND)
+matchers: [
+  {
+    name: 'alertname',
+    operator: '=',
+    value: 'HighCPU'
+  },
+  {
+    name: 'cluster',
+    operator: '=',
+    value: 'production'
+  }
+]
+// Silences alerts matching BOTH conditions
+```
+
+```typescript Regex Match
+matchers: [
+  {
+    name: 'service',
+    operator: '=~',
+    value: 'api-.*'
+  }
+]
+// Silences alerts where service matches regex "api-.*"
+```
+
+```typescript Negative Match
+matchers: [
+  {
+    name: 'severity',
+    operator: '!=',
+    value: 'critical'
+  }
+]
+// Silences all alerts EXCEPT critical ones
+```
+
+</CodeGroup>
+
+<Note>
+All matchers must match for a silence to apply (AND logic). For OR logic, create multiple silences.
+</Note>
+
+## Time Ranges
+
+### Setting Duration
+
+<CodeGroup>
+
+```typescript Explicit Start/End
+{
+  startsAt: '2024-03-10T10:00:00Z',
+  endsAt: '2024-03-10T18:00:00Z'
+}
+```
+
+```typescript Duration-Based
+{
+  startsAt: '2024-03-10T10:00:00Z',
+  duration: '8h'  // Automatically calculates endsAt
+}
+```
+
+```typescript Immediate Start
+{
+  startsAt: new Date().toISOString(),
+  duration: '2h'
+}
+```
+
+</CodeGroup>
+
+### Duration Format
+
+Supported duration formats:
+- `2h` - 2 hours
+- `30m` - 30 minutes
+- `1d` - 1 day
+- `2h30m` - 2 hours 30 minutes
+
+## Silence Metadata
+
+### Comment (Required)
+
+Every silence must have a comment explaining its purpose:
+
+```typescript
+comment: 'Planned maintenance: Database upgrade in progress'
+```
+
+<Warning>
+Comments are required and help teams understand:
+- Why the silence was created
+- What work is being done
+- Who to contact for questions
+
+Good comment examples:
+- "Deployment in progress - expected 30 mins"
+- "Known issue: API rate limiting - team investigating"
+- "Maintenance window: scaling cluster nodes"
+</Warning>
+
+### Created By
+
+Automatically populated with the creator's username:
+
+```typescript
+createdBy: 'alice@example.com'
+```
+
+## Silence with Rule Association
+
+Silences can be associated with specific alert rules:
+
+<CodeGroup>
+
+```typescript Rule-Specific Silence
+matchers: [
+  {
+    name: '__rule_uid__',
+    operator: '=',
+    value: 'alert-rule-uid-123'
+  }
+]
+```
+
+```go Backend Model
+// Location: pkg/services/ngalert/models/silence.go
+type Silence notify.GettableSilence
+
+// GetRuleUID returns the rule UID if silence is rule-associated
+func (s Silence) GetRuleUID() *string {
+    for _, m := range s.Silence.Matchers {
+        if m != nil && m.Name == "__rule_uid__" {
+            return m.Value
+        }
+    }
+    return nil
+}
+```
+
+</CodeGroup>
+
+## Silence Metadata Model
+
+<CodeGroup>
+
+```go Silence with Metadata
+// Location: pkg/services/ngalert/models/silence.go
+type SilenceWithMetadata struct {
+    *Silence
+    Metadata SilenceMetadata
+}
+
+type SilenceMetadata struct {
+    RuleMetadata *SilenceRuleMetadata
+    Permissions  *SilencePermissionSet
+}
+
+type SilenceRuleMetadata struct {
+    RuleUID   string
+    RuleTitle string
+    FolderUID string
+}
+```
+
+```typescript UI Representation
+interface SilenceTableItem {
+  id: string;
+  startsAt: string;
+  endsAt: string;
+  comment: string;
+  createdBy: string;
+  matchers: Matcher[];
+  status: 'active' | 'pending' | 'expired';
+  silencedAlerts?: Alert[];  // Affected alerts (if loaded)
+}
+```
+
+</CodeGroup>
+
+## Permissions
+
+Silences support granular permissions:
+
+<CodeGroup>
+
+```go Permission Types
+type SilencePermission string
+
+const (
+    SilencePermissionRead   SilencePermission = "read"
+    SilencePermissionCreate SilencePermission = "create"
+    SilencePermissionWrite  SilencePermission = "write"
+)
+```
+
+```go Permission Set
+type SilencePermissionSet map[SilencePermission]bool
+
+// Has checks if permission is granted
+func (p SilencePermissionSet) Has(permission SilencePermission) bool {
+    return p[permission]
+}
+```
+
+</CodeGroup>
+
+<Note>
+Permissions are typically managed through Grafana's RBAC system:
+- `alert.silences:read` - View silences
+- `alert.silences:create` - Create new silences
+- `alert.silences:write` - Modify/delete silences
+</Note>
+
+## Common Patterns
+
+### Maintenance Window
+
+```typescript
+{
+  startsAt: '2024-03-15T02:00:00Z',
+  endsAt: '2024-03-15T06:00:00Z',
+  comment: 'Scheduled maintenance: Database cluster upgrade',
+  matchers: [
+    {
+      name: 'cluster',
+      operator: '=',
+      value: 'production'
+    },
+    {
+      name: 'service',
+      operator: '=~',
+      value: 'database.*'
+    }
+  ]
+}
+```
+
+### Deployment Silence
+
+```typescript
+{
+  startsAt: new Date().toISOString(),
+  duration: '30m',
+  comment: 'Deployment: API v2.5.0 rollout',
+  matchers: [
+    {
+      name: 'service',
+      operator: '=',
+      value: 'api'
+    },
+    {
+      name: 'alertname',
+      operator: '=~',
+      value: 'High.*|ServiceDown'
+    }
+  ]
+}
+```
+
+### Known Issue Silence
+
+```typescript
+{
+  startsAt: new Date().toISOString(),
+  duration: '4h',
+  comment: 'Known issue #1234: Investigating intermittent timeouts',
+  matchers: [
+    {
+      name: 'alertname',
+      operator: '=',
+      value: 'HighLatency'
+    },
+    {
+      name: 'endpoint',
+      operator: '=',
+      value: '/api/v1/users'
+    }
+  ]
+}
+```
+
+### Team-Specific Silence
+
+```typescript
+{
+  startsAt: new Date().toISOString(),
+  duration: '2h',
+  comment: 'Team offsite - reducing alert noise',
+  matchers: [
+    {
+      name: 'team',
+      operator: '=',
+      value: 'frontend'
+    },
+    {
+      name: 'severity',
+      operator: '!=',
+      value: 'critical'
+    }
+  ]
+}
+```
+
+## Frontend Components
+
+<CodeGroup>
+
+```typescript Silence Metadata Display
+// Location: public/app/features/alerting/unified/components/silences/
+
+export const SilenceMetadataGrid = ({
+  startsAt,
+  endsAt,
+  comment,
+  createdBy
+}: Props) => (
+  <Stack direction="column" gap={2}>
+    <MetadataRow label="Starts" value={startsAt} />
+    <MetadataRow label="Ends" value={endsAt} />
+    <MetadataRow label="Comment" value={comment} />
+    <MetadataRow label="Created by" value={createdBy} />
+  </Stack>
+);
+```
+
+```typescript Silence Details View
+export const SilenceDetails = ({ silence }: Props) => {
+  const { startsAt, endsAt, comment, createdBy, silencedAlerts } = silence;
+  
+  return (
+    <Stack direction="column" gap={2}>
+      <SilenceMetadataGrid {...{ startsAt, endsAt, comment, createdBy }} />
+      {silencedAlerts && (
+        <>
+          <div>Affected alerts</div>
+          <SilencedAlertsTable silencedAlerts={silencedAlerts} />
+        </>
+      )}
+    </Stack>
+  );
+};
+```
+
+</CodeGroup>
+
+## API Operations
+
+<CodeGroup>
+
+```typescript Create Silence
+POST /api/alertmanager/grafana/api/v2/silences
+
+Body:
+{
+  "matchers": [
+    {"name": "alertname", "value": "HighCPU", "isRegex": false, "isEqual": true}
+  ],
+  "startsAt": "2024-03-10T10:00:00Z",
+  "endsAt": "2024-03-10T18:00:00Z",
+  "comment": "Maintenance window",
+  "createdBy": "alice"
+}
+```
+
+```typescript Get Silences
+GET /api/alertmanager/grafana/api/v2/silences
+
+Response:
+[
+  {
+    "id": "silence-123",
+    "status": {"state": "active"},
+    "matchers": [...],
+    "startsAt": "2024-03-10T10:00:00Z",
+    "endsAt": "2024-03-10T18:00:00Z",
+    "comment": "Maintenance window",
+    "createdBy": "alice"
+  }
+]
+```
+
+```typescript Delete Silence
+DELETE /api/alertmanager/grafana/api/v2/silence/{id}
+```
+
+</CodeGroup>
+
+## Best Practices
+
+<AccordionGroup>
+  <Accordion title="Be specific with matchers">
+    Use precise matchers to avoid silencing too many alerts. Match on multiple labels to narrow scope.
+  </Accordion>
+  
+  <Accordion title="Set appropriate durations">
+    - Deployments: 15-30 minutes
+    - Maintenance: Match actual window
+    - Investigations: 1-4 hours (extend if needed)
+    - Avoid silences longer than 24 hours
+  </Accordion>
+  
+  <Accordion title="Write informative comments">
+    Include:
+    - What work is being done
+    - Expected duration
+    - Who to contact
+    - Ticket/issue reference
+  </Accordion>
+  
+  <Accordion title="Clean up expired silences">
+    Regularly review and delete old silences to keep the list manageable.
+  </Accordion>
+  
+  <Accordion title="Never silence critical alerts blindly">
+    If you need to silence critical alerts, be very specific about which ones and why.
+  </Accordion>
+</AccordionGroup>
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="Silence not working">
+    - Check matchers match alert labels exactly
+    - Verify time range includes current time
+    - Confirm silence state is "active" not "pending"
+    - Check alertmanager configuration is applied
+  </Accordion>
+  
+  <Accordion title="Too many alerts silenced">
+    - Review matchers - they may be too broad
+    - Use more specific label combinations
+    - Consider using negative matchers to exclude certain alerts
+  </Accordion>
+  
+  <Accordion title="Silence expired too soon">
+    - Check timezone settings
+    - Verify duration calculation
+    - Consider creating a new silence with extended time
+  </Accordion>
+</AccordionGroup>
+
+## Related Resources
+
+<CardGroup cols={2}>
+  <Card title="Alert Rules" icon="bell" href="./alert-rules">
+    Create and manage alert rules
+  </Card>
+  <Card title="Notification Policies" icon="route" href="./notification-channels">
+    Configure alert routing
+  </Card>
+  <Card title="Contact Points" icon="envelope" href="./contact-points">
+    Set up notification destinations
+  </Card>
+  <Card title="Overview" icon="book" href="./overview">
+    Understand the alerting architecture
+  </Card>
+</CardGroup>

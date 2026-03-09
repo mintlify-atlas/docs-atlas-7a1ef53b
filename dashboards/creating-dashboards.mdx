@@ -1,0 +1,377 @@
+---
+title: Creating Dashboards
+description: Step-by-step guide to creating and configuring Grafana dashboards from scratch.
+---
+
+# Creating Dashboards
+
+This guide walks you through creating a new dashboard in Grafana, from the initial setup to adding panels and configuring settings.
+
+## Prerequisites
+
+Before creating a dashboard, ensure you have:
+
+- Access to Grafana with appropriate permissions (`canEdit` and `canSave`)
+- At least one configured data source
+- Understanding of the data you want to visualize
+
+## Creating a New Dashboard
+
+<Steps>
+  <Step title="Access Dashboard Creation">
+    Navigate to **Dashboards** → **New Dashboard** or click the **+** icon in the sidebar and select **Dashboard**
+  </Step>
+  <Step title="Add Your First Panel">
+    Click **Add visualization** to create your first panel. You'll be taken to the panel editor.
+  </Step>
+  <Step title="Select Data Source">
+    Choose the data source you want to query from the dropdown menu at the top of the query editor
+  </Step>
+  <Step title="Build Your Query">
+    Configure your query using the data source's query editor. The interface varies by data source type.
+  </Step>
+  <Step title="Choose Visualization">
+    Select a visualization type from the panel on the right (Time series, Bar chart, Table, etc.)
+  </Step>
+  <Step title="Configure Panel Options">
+    Customize the panel title, description, and visualization-specific options
+  </Step>
+  <Step title="Save the Panel">
+    Click **Apply** to add the panel to your dashboard
+  </Step>
+  <Step title="Save the Dashboard">
+    Click the **Save** icon (disk) in the top navigation and provide a name and folder
+  </Step>
+</Steps>
+
+## Dashboard Configuration
+
+### Basic Settings
+
+Configure essential dashboard properties:
+
+```typescript
+// Dashboard configuration example
+const dashboard = {
+  title: "My Application Metrics",
+  description: "Real-time monitoring of application performance",
+  tags: ["production", "api", "performance"],
+  timezone: "browser",           // or "utc", "America/New_York"
+  editable: true,
+  time: {
+    from: "now-6h",
+    to: "now"
+  },
+  refresh: "30s",                // Auto-refresh every 30 seconds
+  graphTooltip: 1,               // 0=off, 1=shared crosshair, 2=shared tooltip
+};
+```
+
+### Time Settings
+
+Set the default time range for your dashboard:
+
+<CodeGroup>
+```typescript Time Range Options
+// Relative time ranges
+time: {
+  from: "now-1h",   // Last hour
+  to: "now"
+}
+
+time: {
+  from: "now-24h",  // Last 24 hours
+  to: "now"
+}
+
+time: {
+  from: "now-7d",   // Last 7 days
+  to: "now"
+}
+
+// Absolute time ranges
+time: {
+  from: "2024-01-01T00:00:00Z",
+  to: "2024-01-31T23:59:59Z"
+}
+```
+
+```typescript Refresh Intervals
+// Auto-refresh options
+refresh: "5s"   // Every 5 seconds
+refresh: "10s"  // Every 10 seconds
+refresh: "30s"  // Every 30 seconds
+refresh: "1m"   // Every minute
+refresh: "5m"   // Every 5 minutes
+refresh: ""     // No auto-refresh
+```
+</CodeGroup>
+
+### Timezone Configuration
+
+Control how times are displayed:
+
+- **browser**: Use the viewer's local timezone (default)
+- **utc**: Display times in UTC
+- **IANA timezone**: Specify timezone like "America/New_York", "Europe/London"
+
+```typescript
+timezone: "browser"           // User's local time
+timezone: "utc"              // Coordinated Universal Time
+timezone: "America/Chicago"  // Specific timezone
+```
+
+## Organizing Panels
+
+### Grid Layout
+
+Panels are positioned on a 24-column grid:
+
+```typescript
+interface GridPos {
+  x: number;  // Horizontal position (0-23)
+  y: number;  // Vertical position (in grid units)
+  w: number;  // Width in columns (1-24)
+  h: number;  // Height in grid units
+}
+
+// Example: Full-width panel at the top
+const panelGridPos: GridPos = {
+  x: 0,   // Left edge
+  y: 0,   // Top
+  w: 24,  // Full width
+  h: 8    // 8 grid units tall
+};
+
+// Example: Half-width panel
+const halfWidthPanel: GridPos = {
+  x: 0,   // Left half
+  y: 8,   // Below first panel
+  w: 12,  // Half width
+  h: 8
+};
+```
+
+### Using Rows
+
+Organize related panels into collapsible rows:
+
+<Steps>
+  <Step title="Add a Row">
+    Click **Add** → **Row** to create a new row panel
+  </Step>
+  <Step title="Configure the Row">
+    Set the row title and optionally make it collapsible
+  </Step>
+  <Step title="Add Panels to Row">
+    Drag panels into the row or create new ones below the row header
+  </Step>
+  <Step title="Collapse/Expand">
+    Click the row title to collapse or expand all panels within
+  </Step>
+</Steps>
+
+```typescript
+// Row panel configuration
+const rowPanel = {
+  type: "row",
+  title: "Database Metrics",
+  collapsed: false,  // Whether row starts collapsed
+  gridPos: { x: 0, y: 0, w: 24, h: 1 },
+  panels: []         // Nested panels when collapsed
+};
+```
+
+## Adding Dashboard Links
+
+Create navigation between dashboards:
+
+```typescript
+interface DashboardLink {
+  title: string;           // Link text
+  type: "link" | "dashboards";  // Link or dashboard search
+  url?: string;            // For external links
+  tags?: string[];         // For dashboard type, filter by tags
+  icon?: string;           // Icon name
+  targetBlank?: boolean;   // Open in new tab
+  keepTime?: boolean;      // Preserve time range
+}
+
+// Example: Link to another dashboard
+links: [
+  {
+    title: "Application Overview",
+    type: "dashboards",
+    tags: ["overview"],
+    keepTime: true
+  },
+  {
+    title: "Documentation",
+    type: "link",
+    url: "https://docs.example.com",
+    targetBlank: true
+  }
+]
+```
+
+## Dashboard JSON Model
+
+Every dashboard is stored as JSON. Access via **Dashboard settings** → **JSON Model**:
+
+```json
+{
+  "uid": "abc123",
+  "title": "My Dashboard",
+  "tags": ["production"],
+  "timezone": "browser",
+  "schemaVersion": 38,
+  "version": 1,
+  "refresh": "30s",
+  "time": {
+    "from": "now-6h",
+    "to": "now"
+  },
+  "panels": [
+    {
+      "id": 1,
+      "type": "timeseries",
+      "title": "Request Rate",
+      "gridPos": { "x": 0, "y": 0, "w": 12, "h": 8 },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "rate(http_requests_total[5m])"
+        }
+      ]
+    }
+  ],
+  "templating": {
+    "list": []
+  }
+}
+```
+
+## Importing Dashboards
+
+### From JSON
+
+<Steps>
+  <Step title="Navigate to Import">
+    Go to **Dashboards** → **Import**
+  </Step>
+  <Step title="Paste JSON or Upload">
+    Either paste JSON directly or upload a `.json` file
+  </Step>
+  <Step title="Configure Options">
+    Set dashboard name, folder, and unique ID (UID)
+  </Step>
+  <Step title="Map Data Sources">
+    If the JSON references data sources, map them to your configured sources
+  </Step>
+  <Step title="Import">
+    Click **Import** to create the dashboard
+  </Step>
+</Steps>
+
+### From Grafana.com
+
+Import community dashboards by ID:
+
+```bash
+# Browse dashboards at https://grafana.com/grafana/dashboards/
+# Copy the dashboard ID (e.g., 1860 for Node Exporter)
+```
+
+Enter the ID in the import dialog to fetch and import.
+
+## Best Practices
+
+<CardGroup cols={2}>
+  <Card title="Naming Conventions" icon="tag">
+    Use clear, descriptive names: "Production API Metrics" instead of "Dashboard 1"
+  </Card>
+  <Card title="Folder Organization" icon="folder">
+    Group related dashboards in folders by team, environment, or application
+  </Card>
+  <Card title="Use Tags" icon="tags">
+    Tag dashboards for easy filtering: "production", "staging", "database", "api"
+  </Card>
+  <Card title="Default Time Range" icon="clock">
+    Set appropriate default time ranges based on your monitoring needs
+  </Card>
+</CardGroup>
+
+<Note>
+  **Dashboard UIDs**: Each dashboard has a unique identifier (UID) used in URLs and links. When importing, you can assign a new UID to avoid conflicts.
+</Note>
+
+## Advanced Configuration
+
+### Cursor Sync
+
+Synchronize crosshair and tooltips across panels:
+
+```typescript
+enum DashboardCursorSync {
+  Off = 0,       // No sync
+  Crosshair = 1, // Sync crosshair only
+  Tooltip = 2    // Sync crosshair and tooltip
+}
+
+graphTooltip: DashboardCursorSync.Crosshair
+```
+
+### Live Updates
+
+Keep dashboards up-to-date with streaming data:
+
+```typescript
+liveNow: true  // Continuously update panels with streaming data
+```
+
+### Panel Preloading
+
+Load all panels immediately on dashboard load:
+
+```typescript
+preload: true  // Load all panels at once (may impact performance)
+```
+
+## Troubleshooting
+
+### Dashboard Not Saving
+
+- Check you have `canSave` permission
+- Verify the folder you're saving to allows writes
+- Ensure dashboard JSON is valid
+
+### Panels Not Loading
+
+- Verify data source is accessible
+- Check query syntax and time range
+- Review browser console for errors
+- Confirm data source permissions
+
+### Performance Issues
+
+- Reduce number of panels (aim for less than 30)
+- Increase auto-refresh interval
+- Optimize query time ranges
+- Use query caching where appropriate
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Configure Panels" href="/dashboards/panels" icon="chart-bar">
+    Learn about different panel types and options
+  </Card>
+  <Card title="Add Variables" href="/dashboards/variables" icon="sliders">
+    Make dashboards dynamic with variables
+  </Card>
+  <Card title="Use Templating" href="/dashboards/templating" icon="code">
+    Create reusable, flexible dashboards
+  </Card>
+  <Card title="Share Dashboards" href="/dashboards/sharing" icon="share">
+    Share your dashboards with your team
+  </Card>
+</CardGroup>

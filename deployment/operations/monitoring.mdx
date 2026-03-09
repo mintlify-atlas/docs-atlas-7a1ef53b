@@ -1,0 +1,279 @@
+---
+title: Monitoring Grafana
+description: Monitor your Grafana deployment with metrics, health checks, and logging
+keywords:
+  - grafana
+  - monitoring
+  - metrics
+  - health checks
+  - observability
+---
+
+# Monitoring Grafana
+
+Monitoring your Grafana deployment ensures optimal performance and helps you identify issues before they impact users. This guide covers the available monitoring endpoints, key metrics, and health check mechanisms.
+
+## Health check endpoints
+
+Grafana exposes several HTTP endpoints to monitor instance health.
+
+### Liveness probe
+
+The `/livez` endpoint returns `200 OK` if the Grafana HTTP server is running:
+
+```sh
+curl http://localhost:3000/livez
+```
+
+This endpoint is useful for container orchestrators like Kubernetes to verify the process is alive.
+
+**Response:**
+
+```text
+OK
+```
+
+Refer to `pkg/server/health.go:36` for implementation details.
+
+### Readiness probe
+
+The `/readyz` endpoint returns `200 OK` when Grafana has completed initialization and is ready to serve requests:
+
+```sh
+curl http://localhost:3000/readyz
+```
+
+If the instance isn't ready, it returns `503 Service Unavailable`.
+
+**Ready response:**
+
+```text
+OK
+```
+
+**Not ready response:**
+
+```text
+not ready
+```
+
+Refer to `pkg/server/health.go:45` for implementation details.
+
+### Database health
+
+The `/api/health` endpoint checks both web server and database connectivity:
+
+```sh
+curl http://localhost:3000/api/health
+```
+
+**Healthy response (200 OK):**
+
+```json
+{
+  "database": "ok",
+  "version": "12.4.0",
+  "commit": "abc123"
+}
+```
+
+**Unhealthy response (503 Service Unavailable):**
+
+```json
+{
+  "database": "failing"
+}
+```
+
+Database health is cached for 5 seconds to reduce load. Refer to `pkg/api/health.go:10` for implementation.
+
+### Legacy health check
+
+The `/healthz` endpoint provides a simple 200 OK response if the web server is running:
+
+```sh
+curl http://localhost:3000/healthz
+```
+
+## Prometheus metrics
+
+Grafana exposes Prometheus-compatible metrics at the `/metrics` endpoint for comprehensive monitoring.
+
+### Enabling metrics
+
+Metrics are disabled by default. Enable them in your configuration:
+
+```ini
+[metrics]
+enabled = true
+```
+
+Optionally, secure the endpoint with basic authentication:
+
+```ini
+[metrics]
+enabled = true
+basic_auth_username = admin
+basic_auth_password = <PASSWORD>
+```
+
+Replace `<PASSWORD>` with a secure password.
+
+### Accessing metrics
+
+Once enabled, access metrics at:
+
+```sh
+curl http://localhost:3000/metrics
+```
+
+With basic authentication:
+
+```sh
+curl -u admin:<PASSWORD> http://localhost:3000/metrics
+```
+
+Refer to `pkg/api/http_server.go:736` for the metrics handler implementation.
+
+### Key metrics
+
+Grafana exposes metrics under the `grafana_` namespace. Here are the most important metrics for operational monitoring:
+
+#### Instance metrics
+
+- `grafana_instance_start_total` - Counter of instance starts
+- `grafana_build_info` - Build information with version, revision, and edition labels
+- `grafana_environment_info` - Environment information from operator-provided labels
+
+#### HTTP metrics
+
+- `grafana_api_response_status_total` - API HTTP response status codes
+- `grafana_page_response_status_total` - Page HTTP response status codes
+- `grafana_proxy_response_status_total` - Proxy HTTP response status codes
+
+#### Database metrics
+
+- `grafana_stat_total_dashboards` - Total number of dashboards
+- `grafana_stat_total_users` - Total number of users
+- `grafana_stat_total_orgs` - Total number of organizations
+- `grafana_stat_totals_datasource` - Total datasources by plugin ID
+
+#### Performance metrics
+
+- `grafana_api_dashboard_search_milliseconds` - Dashboard search duration
+- `grafana_api_dataproxy_request_all_milliseconds` - Data proxy request duration
+- `grafana_rendering_request_duration_milliseconds` - Image rendering duration
+
+#### Alerting metrics
+
+- `grafana_alerting_active_alerts` - Number of active alerts
+- `grafana_alerting_result_total` - Alert execution results by state
+- `grafana_alerting_notification_sent_total` - Alert notifications sent by type
+- `grafana_alerting_notification_failed_total` - Failed alert notifications by type
+- `grafana_alerting_execution_time_milliseconds` - Alert execution duration
+
+#### Access control metrics
+
+- `grafana_access_evaluation_count` - Number of permission evaluations
+- `grafana_access_evaluation_duration` - Permission evaluation duration
+- `grafana_access_permissions_cache_usage` - Cache hit/miss for permissions
+
+Refer to `pkg/infra/metrics/metrics.go` for the complete metric definitions.
+
+## Application logging
+
+Grafana writes structured logs that you can use for monitoring and troubleshooting.
+
+### Log configuration
+
+Configure logging in `grafana.ini`:
+
+```ini
+[log]
+# Either "console", "file", "syslog". Default is console and file
+mode = console file
+
+# Either "debug", "info", "warn", "error", "critical"
+level = info
+
+# Log line format, valid options are text, console and json
+format = json
+```
+
+### Log levels
+
+- `debug` - Detailed debugging information
+- `info` - General operational messages
+- `warn` - Warning messages for potential issues
+- `error` - Error messages for failures
+- `critical` - Critical failures requiring immediate attention
+
+### File logging
+
+When file mode is enabled, logs are written to the directory specified in the `paths` section:
+
+```ini
+[paths]
+logs = /var/log/grafana
+```
+
+Log files rotate automatically based on size and age.
+
+## Performance monitoring
+
+Monitor these key performance indicators for Grafana health:
+
+### Database connections
+
+- Monitor database connection pool usage
+- Check for connection exhaustion
+- Review slow query logs
+
+### Memory usage
+
+- Track Grafana process memory consumption
+- Monitor for memory leaks over time
+- Set appropriate resource limits in container environments
+
+### Request latency
+
+- Monitor dashboard load times
+- Track data source query durations
+- Review API response times
+
+### Error rates
+
+- Track HTTP 5xx error rates
+- Monitor data source query failures
+- Review alert evaluation errors
+
+## Example monitoring setup
+
+You can monitor Grafana using Grafana itself by configuring Prometheus to scrape the metrics endpoint:
+
+**Prometheus configuration:**
+
+```yaml
+scrape_configs:
+  - job_name: 'grafana'
+    static_configs:
+      - targets: ['localhost:3000']
+    metrics_path: '/metrics'
+    basic_auth:
+      username: 'admin'
+      password: '<PASSWORD>'
+```
+
+Then create dashboards in Grafana to visualize:
+
+- Request rates and latencies
+- Error rates by endpoint
+- Database query performance
+- Active user sessions
+- Alert evaluation metrics
+
+## Next steps
+
+- Set up [backup and restore](./backup-restore) procedures
+- Configure [high availability](./high-availability) for production deployments
+- Review the [upgrading guide](./upgrading) for version updates

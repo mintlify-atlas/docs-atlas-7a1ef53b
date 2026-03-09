@@ -1,0 +1,578 @@
+---
+title: Elasticsearch Data Source
+description: Query logs and metrics from Elasticsearch using Lucene queries and aggregations
+---
+
+# Elasticsearch Data Source
+
+Elasticsearch is a distributed search and analytics engine. Grafana's Elasticsearch data source allows you to query logs, metrics, and perform complex aggregations for visualization.
+
+## Overview
+
+The Elasticsearch data source supports:
+- Lucene query syntax for log searching
+- Bucket and metric aggregations
+- Time series metrics visualization
+- Log exploration and filtering
+- Template variables from Elasticsearch data
+
+<Info>
+Source: `public/app/plugins/datasource/elasticsearch/`
+</Info>
+
+## Configuration
+
+### Connection Settings
+
+<Steps>
+  <Step title="Add Data Source">
+    Navigate to **Configuration** > **Data Sources** > **Add data source** > **Elasticsearch**
+  </Step>
+  
+  <Step title="Configure URL">
+    Set the Elasticsearch cluster URL:
+    ```
+    http://elasticsearch:9200
+    ```
+  </Step>
+  
+  <Step title="Set Index Pattern">
+    Configure the index pattern (supports wildcards):
+    ```
+    logs-*
+    ```
+    
+    Or time-based patterns:
+    ```
+    [logs-]YYYY.MM.DD
+    ```
+  </Step>
+  
+  <Step title="Configure Time Field">
+    Specify the field containing timestamps:
+    ```
+    @timestamp
+    ```
+  </Step>
+  
+  <Step title="Set Elasticsearch Version">
+    Select your Elasticsearch version for query compatibility:
+    - 7.0+
+    - 7.10+
+    - 8.0+
+  </Step>
+</Steps>
+
+### Data Source Options
+
+<ParamField path="index" type="string">
+  Index name or pattern. Supports:
+  - Wildcards: `logs-*`
+  - Time patterns: `[prefix-]YYYY.MM.DD`
+  - Multiple indices: Use comma-separated list in queries
+</ParamField>
+
+<ParamField path="timeField" type="string" default="@timestamp">
+  Field name containing the timestamp. Must be a date type in Elasticsearch.
+</ParamField>
+
+<ParamField path="timeInterval" type="string">
+  Minimum time interval for auto-interval calculation (e.g., `10s`, `1m`).
+</ParamField>
+
+<ParamField path="maxConcurrentShardRequests" type="number">
+  Maximum number of concurrent shard requests. Lower values reduce cluster load.
+</ParamField>
+
+<ParamField path="logMessageField" type="string">
+  Field to display as the log message in log views.
+</ParamField>
+
+<ParamField path="logLevelField" type="string">
+  Field containing log level for filtering and colorization.
+</ParamField>
+
+<ParamField path="includeFrozen" type="boolean" default="false">
+  Include frozen indices in search (Elasticsearch 7.0+).
+</ParamField>
+
+## Query Editor
+
+The Elasticsearch query editor provides multiple query modes:
+
+<Tabs>
+  <Tab title="Metrics Query">
+    Build time series queries using aggregations:
+    
+    1. **Metric**: Choose aggregation type (Count, Average, Sum, etc.)
+    2. **Group By**: Add bucket aggregations (Date Histogram, Terms, etc.)
+    3. **Filters**: Apply Lucene query filters
+    
+    Example query structure:
+    ```json
+    {
+      "query": { "query_string": { "query": "status:200" } },
+      "aggs": {
+        "date_histogram": { "field": "@timestamp", "interval": "auto" },
+        "avg": { "field": "response_time" }
+      }
+    }
+    ```
+  </Tab>
+  
+  <Tab title="Logs Query">
+    Search and explore log documents:
+    
+    1. Enter Lucene query in query field
+    2. Select document fields to display
+    3. Configure log volume histogram
+    
+    Returns raw documents with highlighting.
+  </Tab>
+  
+  <Tab title="Raw Data">
+    Query raw documents without aggregations:
+    
+    - Specify Lucene query
+    - Set document size limit
+    - Choose sorting order
+    
+    Use for table panels showing individual documents.
+  </Tab>
+</Tabs>
+
+## Lucene Query Syntax
+
+### Basic Queries
+
+**Field search:**
+
+```
+status:200
+```
+
+**Multiple fields:**
+
+```
+status:200 AND method:GET
+```
+
+**Range queries:**
+
+```
+response_time:[100 TO 500]
+status:>=400
+```
+
+**Wildcard search:**
+
+```
+message:error*
+path:/api/*/users
+```
+
+**Phrase search:**
+
+```
+message:"connection timeout"
+```
+
+**Boolean operators:**
+
+```
+(status:500 OR status:502) AND environment:production
+status:200 NOT path:/health
+```
+
+### Query String Examples
+
+```
+# Exact match
+query: "error"
+
+# Field exists
+_exists_:error_code
+
+# Field missing
+NOT _exists_:user_id
+
+# Regex (use carefully, can be slow)
+message:/joh?n(ath[oa]n)/
+
+# Nested fields
+user.name:"John Doe"
+```
+
+<Info>
+Source: `public/app/plugins/datasource/elasticsearch/QueryBuilder.ts:197-207`
+</Info>
+
+## Metric Aggregations
+
+### Aggregation Types
+
+<Accordion title="Count">
+  Count number of documents:
+  ```json
+  { "type": "count" }
+  ```
+</Accordion>
+
+<Accordion title="Average">
+  Calculate average of a field:
+  ```json
+  { "type": "avg", "field": "response_time" }
+  ```
+</Accordion>
+
+<Accordion title="Sum">
+  Sum values of a field:
+  ```json
+  { "type": "sum", "field": "bytes" }
+  ```
+</Accordion>
+
+<Accordion title="Min / Max">
+  Get minimum or maximum value:
+  ```json
+  { "type": "min", "field": "response_time" }
+  { "type": "max", "field": "response_time" }
+  ```
+</Accordion>
+
+<Accordion title="Percentiles">
+  Calculate percentiles:
+  ```json
+  {
+    "type": "percentiles",
+    "field": "response_time",
+    "settings": { "percents": [50, 95, 99] }
+  }
+  ```
+</Accordion>
+
+<Accordion title="Extended Stats">
+  Get comprehensive statistics:
+  ```json
+  { "type": "extended_stats", "field": "response_time" }
+  ```
+  
+  Returns: count, min, max, avg, sum, sum_of_squares, variance, std_deviation
+</Accordion>
+
+## Bucket Aggregations
+
+### Date Histogram
+
+Group data into time buckets:
+
+```json
+{
+  "type": "date_histogram",
+  "field": "@timestamp",
+  "settings": {
+    "interval": "auto",
+    "min_doc_count": 0
+  }
+}
+```
+
+<Info>
+Source: `public/app/plugins/datasource/elasticsearch/QueryBuilder.ts:110-134`
+</Info>
+
+**Interval options:**
+- `auto`: Grafana calculates based on time range
+- `1s`, `1m`, `1h`, `1d`: Fixed intervals
+- `1w`, `1M`, `1q`, `1y`: Calendar intervals
+
+### Terms Aggregation
+
+Group by field values:
+
+```json
+{
+  "type": "terms",
+  "field": "status",
+  "settings": {
+    "size": 10,
+    "order": "desc",
+    "orderBy": "_count",
+    "min_doc_count": 1
+  }
+}
+```
+
+<Info>
+Source: `public/app/plugins/datasource/elasticsearch/QueryBuilder.ts:53-108`
+</Info>
+
+**Settings:**
+- `size`: Number of buckets to return (default: 500)
+- `orderBy`: Sort by `_count`, `_term`, or metric ID
+- `order`: `asc` or `desc`
+- `min_doc_count`: Minimum documents per bucket
+- `missing`: Value for documents missing the field
+
+### Filters Aggregation
+
+Create custom-named buckets with queries:
+
+```json
+{
+  "type": "filters",
+  "settings": {
+    "filters": [
+      { "query": "status:200", "label": "Success" },
+      { "query": "status:>=400", "label": "Errors" }
+    ]
+  }
+}
+```
+
+<Info>
+Source: `public/app/plugins/datasource/elasticsearch/QueryBuilder.ts:147-160`
+</Info>
+
+### Histogram Aggregation
+
+Group numeric values into buckets:
+
+```json
+{
+  "type": "histogram",
+  "field": "response_time",
+  "settings": {
+    "interval": 100,
+    "min_doc_count": 0
+  }
+}
+```
+
+### GeoHash Grid
+
+Group geo-points by location:
+
+```json
+{
+  "type": "geohash_grid",
+  "field": "location",
+  "settings": { "precision": 3 }
+}
+```
+
+## Pipeline Aggregations
+
+Perform calculations on other aggregations:
+
+### Moving Average
+
+```json
+{
+  "type": "moving_avg",
+  "field": "1",  // Reference to another metric
+  "settings": {
+    "window": 5,
+    "model": "simple"
+  }
+}
+```
+
+### Derivative
+
+```json
+{
+  "type": "derivative",
+  "field": "1",
+  "settings": { "unit": "1s" }
+}
+```
+
+### Cumulative Sum
+
+```json
+{
+  "type": "cumulative_sum",
+  "field": "1"
+}
+```
+
+## Query Examples
+
+### HTTP Error Rate
+
+**Query:** `status:>=400`
+
+**Aggregations:**
+- Metric: Count
+- Group by: Date Histogram (@timestamp, auto interval)
+- Group by: Terms (status, size: 10)
+
+### Average Response Time by Endpoint
+
+**Query:** `*`
+
+**Aggregations:**
+- Metric: Average (response_time)
+- Group by: Date Histogram (@timestamp, 1m)
+- Group by: Terms (path, size: 20)
+
+### 95th Percentile Latency
+
+**Query:** `service:api`
+
+**Aggregations:**
+- Metric: Percentiles (duration, percents: [95])
+- Group by: Date Histogram (@timestamp, auto)
+
+### Log Volume by Level
+
+**Query:** `*`
+
+**Aggregations:**
+- Metric: Count
+- Group by: Date Histogram (@timestamp, auto)
+- Group by: Terms (level, order by: _count desc)
+
+## Template Variables
+
+### Terms Query
+
+Populate variable from field values:
+
+```json
+{
+  "find": "terms",
+  "field": "hostname",
+  "query": "environment:production",
+  "size": 100
+}
+```
+
+<Info>
+Source: `public/app/plugins/datasource/elasticsearch/QueryBuilder.ts:400-458`
+</Info>
+
+### Using Variables in Queries
+
+```
+status:$status AND hostname:$hostname
+```
+
+Multi-value variables:
+
+```
+hostname:($hostname)  // Expands to: hostname:(host1 OR host2 OR host3)
+```
+
+## Annotations
+
+Create annotations from Elasticsearch documents:
+
+<Steps>
+  <Step title="Add Annotation">
+    Dashboard settings > Annotations > Add annotation query
+  </Step>
+  
+  <Step title="Configure Query">
+    - **Index**: Annotation index pattern
+    - **Query**: Lucene query to filter events
+    - **Time Field**: Field with timestamp
+    - **Text Field**: Field for annotation text
+    - **Tags Field**: Field for tags (comma-separated)
+  </Step>
+  
+  <Step title="View on Dashboard">
+    Annotations appear as markers on time series panels
+  </Step>
+</Steps>
+
+## Performance Optimization
+
+<CardGroup cols={2}>
+  <Card title="Use Index Patterns" icon="filter">
+    Query specific indices instead of wildcards:
+    ```
+    logs-2024.03.09
+    ```
+    vs.
+    ```
+    logs-*
+    ```
+  </Card>
+  
+  <Card title="Limit Shard Requests" icon="server">
+    Set `maxConcurrentShardRequests` to reduce cluster load:
+    ```yaml
+    maxConcurrentShardRequests: 5
+    ```
+  </Card>
+  
+  <Card title="Use Filters" icon="magnifying-glass">
+    Filter early with specific queries:
+    ```
+    status:200 AND path:/api/*
+    ```
+    Better than:
+    ```
+    *
+    ```
+  </Card>
+  
+  <Card title="Limit Bucket Size" icon="list">
+    Reduce Terms aggregation size:
+    ```json
+    { "size": 10 }
+    ```
+    Instead of default 500.
+  </Card>
+</CardGroup>
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="No data returned">
+    - Verify index pattern matches existing indices
+    - Check time field name and format
+    - Confirm time range includes data
+    - Review Elasticsearch logs for query errors
+    - Test query in Kibana/Dev Tools
+  </Accordion>
+  
+  <Accordion title="Query timeout or performance issues">
+    - Reduce time range
+    - Add more specific filters to query
+    - Lower `maxConcurrentShardRequests`
+    - Use smaller aggregation bucket sizes
+    - Consider using Elasticsearch rollups
+  </Accordion>
+  
+  <Accordion title="Field not found">
+    - Check field mapping in Elasticsearch
+    - Verify field exists in queried indices
+    - Use keyword subfield for text fields: `field.keyword`
+    - Refresh field list in data source settings
+  </Accordion>
+  
+  <Accordion title="Incorrect aggregation results">
+    - Verify time field is correct date type
+    - Check for missing data in time range
+    - Review `min_doc_count` setting
+    - Confirm field types match aggregation (numeric for avg/sum)
+  </Accordion>
+</AccordionGroup>
+
+## Best Practices
+
+1. **Use keyword fields for aggregations**: `field.keyword` instead of analyzed text fields
+2. **Set appropriate index patterns**: Narrow to specific time ranges when possible
+3. **Limit aggregation cardinality**: Use filters or smaller bucket sizes
+4. **Configure proper mappings**: Set field types correctly in Elasticsearch
+5. **Use index lifecycle management**: Rotate and delete old indices
+6. **Monitor cluster health**: Watch for shard allocation and query performance
+
+## Further Reading
+
+- [Elasticsearch Official Documentation](https://www.elastic.co/guide/en/elasticsearch/reference/current/index.html)
+- [Lucene Query Syntax](https://www.elastic.co/guide/en/elasticsearch/reference/current/query-dsl-query-string-query.html#query-string-syntax)
+- [Elasticsearch Aggregations](https://www.elastic.co/guide/en/elasticsearch/reference/current/search-aggregations.html)

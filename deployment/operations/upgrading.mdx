@@ -1,0 +1,436 @@
+---
+title: Upgrading Grafana
+description: Upgrade your Grafana deployment to newer versions
+keywords:
+  - grafana
+  - upgrade
+  - migration
+  - version
+---
+
+# Upgrading Grafana
+
+Upgrading Grafana provides access to new features, performance improvements, and security fixes. This guide covers upgrade strategies, procedures, and best practices.
+
+## Before you begin
+
+Before upgrading your Grafana instance, ensure you have:
+
+- A complete backup of your Grafana database and configuration files
+- Reviewed the release notes and upgrade guide for your target version
+- Tested the upgrade in a non-production environment
+- Planned maintenance window if downtime is required
+
+## Understanding Grafana versioning
+
+Grafana follows semantic versioning (MAJOR.MINOR.PATCH):
+
+- **Major releases** (for example, 11.0 to 12.0) - Once yearly, may include breaking changes
+- **Minor releases** (for example, 12.1 to 12.2) - Feature updates, minimal breaking changes
+- **Patch releases** (for example, 12.1.0 to 12.1.1) - Bug fixes and security patches
+
+## Upgrade strategies
+
+Choose an upgrade strategy based on your organization's needs:
+
+### Rolling upgrade strategy
+
+Upgrade to each minor version sequentially:
+
+- **Advantages:** Smaller changelogs, easier troubleshooting, lower risk
+- **Disadvantages:** More frequent upgrades required
+- **Example:** 12.1 → 12.2 → 12.3 → 12.4
+
+### Major version upgrade strategy
+
+Upgrade once per year to major versions:
+
+- **Advantages:** Fewer upgrades, longer testing periods
+- **Disadvantages:** Larger changelogs, more potential breaking changes
+- **Example:** 11.0 → 12.0 → 13.0
+
+### Patch-only strategy
+
+Apply only security and bug fix patches:
+
+- **Advantages:** Minimal changes, highest stability
+- **Disadvantages:** Miss new features, limited support lifecycle
+- **Example:** 12.1.0 → 12.1.1 → 12.1.2
+
+## Version support lifecycle
+
+Grafana versions receive support for a limited time:
+
+- **Current major version** - Full support with features, bug fixes, and security patches
+- **Previous major version** - Security and critical bug fixes for 12 months
+- **Older versions** - No support, upgrade recommended
+
+Plan upgrades to stay within the support window.
+
+## Upgrade preparation
+
+### Review release documentation
+
+Before upgrading, review:
+
+- [Release notes](https://github.com/grafana/grafana/releases) for new features
+- [Changelog](https://github.com/grafana/grafana/blob/main/CHANGELOG.md) for detailed changes
+- [Upgrade guides](https://grafana.com/docs/grafana/latest/upgrade-guide/) for version-specific steps
+- [Breaking changes](https://grafana.com/docs/grafana/latest/breaking-changes/) documentation
+
+### Create a backup
+
+Always back up before upgrading:
+
+```sh
+# Backup database (PostgreSQL example)
+pg_dump -h localhost -U grafana -d grafana -F c -f grafana-pre-upgrade.dump
+
+# Backup configuration
+cp -r /etc/grafana /backup/grafana-config-$(date +%Y%m%d)
+```
+
+Refer to the [backup and restore guide](./backup-restore) for detailed procedures.
+
+### Check plugin compatibility
+
+Verify that installed plugins are compatible with the target version:
+
+```sh
+grafana-cli plugins list-versions <PLUGIN_ID>
+```
+
+Replace `<PLUGIN_ID>` with your plugin identifier.
+
+Update incompatible plugins before or immediately after upgrading.
+
+### Test in non-production
+
+Test the upgrade in a development or staging environment:
+
+1. Restore a production database backup to the test environment
+2. Upgrade the test instance
+3. Verify dashboards, data sources, and alerts function correctly
+4. Test key workflows and integrations
+5. Review logs for errors or warnings
+
+## Upgrade procedures
+
+### Package manager upgrade (Linux)
+
+For installations using package managers:
+
+**Debian/Ubuntu (APT):**
+
+```sh
+# Update package list
+sudo apt-get update
+
+# Upgrade Grafana
+sudo apt-get upgrade grafana
+
+# Restart service
+sudo systemctl restart grafana-server
+```
+
+**RHEL/CentOS (YUM/DNF):**
+
+```sh
+# Upgrade Grafana
+sudo yum update grafana
+# or
+sudo dnf update grafana
+
+# Restart service
+sudo systemctl restart grafana-server
+```
+
+### Binary upgrade
+
+For binary installations:
+
+```sh
+# Download new version
+wget https://dl.grafana.com/oss/release/grafana-12.4.0.linux-amd64.tar.gz
+
+# Stop Grafana
+sudo systemctl stop grafana-server
+
+# Extract new version
+tar -zxvf grafana-12.4.0.linux-amd64.tar.gz
+
+# Replace binary files (preserve data and config)
+sudo cp -r grafana-12.4.0/* /usr/share/grafana/
+
+# Start Grafana
+sudo systemctl start grafana-server
+```
+
+### Docker upgrade
+
+For containerized deployments:
+
+**Docker:**
+
+```sh
+# Pull new image
+docker pull grafana/grafana:12.4.0
+
+# Stop current container
+docker stop grafana
+
+# Remove old container (volumes are preserved)
+docker rm grafana
+
+# Start new container
+docker run -d \
+  --name grafana \
+  -p 3000:3000 \
+  -v grafana-data:/var/lib/grafana \
+  grafana/grafana:12.4.0
+```
+
+**Docker Compose:**
+
+```yaml
+# Update docker-compose.yml
+services:
+  grafana:
+    image: grafana/grafana:12.4.0
+    # ... other configuration
+```
+
+Then apply the update:
+
+```sh
+docker-compose down
+docker-compose up -d
+```
+
+### Kubernetes upgrade
+
+For Kubernetes deployments using Helm:
+
+```sh
+# Update Helm repository
+helm repo update
+
+# Upgrade Grafana
+helm upgrade grafana grafana/grafana \
+  --version 8.0.0 \
+  --namespace monitoring \
+  --reuse-values
+```
+
+## Database migrations
+
+Grafana automatically runs database migrations on startup when upgrading.
+
+### Migration process
+
+When Grafana starts after an upgrade:
+
+1. Detects database schema version
+2. Applies pending migrations in order
+3. Locks database during migration (configurable)
+4. Logs migration progress
+5. Starts normally after successful migration
+
+### Migration settings
+
+Configure migration behavior in `grafana.ini`:
+
+```ini
+[database]
+# Lock database during migrations
+migration_locking = true
+
+# Timeout for acquiring migration lock (seconds)
+locking_attempt_timeout_sec = 0
+
+# Skip all migrations on startup
+skip_migrations = false
+```
+
+Refer to `conf/defaults.ini:201` for database migration settings.
+
+### Migration monitoring
+
+Monitor migration logs during upgrades:
+
+```sh
+sudo journalctl -u grafana-server -f
+```
+
+Successful migrations log messages like:
+
+```text
+info: Executing migration "add_column_foo_to_bar"
+info: Migration completed successfully
+```
+
+## Plugin upgrades
+
+Upgrade plugins after upgrading Grafana.
+
+### Upgrade all plugins
+
+Upgrade all installed plugins:
+
+```sh
+grafana-cli plugins upgrade-all
+```
+
+Refer to `pkg/cmd/grafana-cli/commands/upgrade_all_command.go` for the CLI implementation.
+
+### Upgrade specific plugin
+
+Upgrade a single plugin:
+
+```sh
+grafana-cli plugins upgrade <PLUGIN_ID>
+```
+
+Replace `<PLUGIN_ID>` with the plugin identifier.
+
+Refer to `pkg/cmd/grafana-cli/commands/upgrade_command.go:15` for the CLI implementation.
+
+### Restart after plugin upgrade
+
+Restart Grafana after upgrading plugins:
+
+```sh
+sudo systemctl restart grafana-server
+```
+
+## Post-upgrade verification
+
+After upgrading, verify functionality:
+
+### Check service status
+
+Verify Grafana is running:
+
+```sh
+sudo systemctl status grafana-server
+```
+
+### Check application logs
+
+Review logs for errors:
+
+```sh
+sudo journalctl -u grafana-server -n 100
+```
+
+### Verify database connectivity
+
+Test the health endpoint:
+
+```sh
+curl http://localhost:3000/api/health
+```
+
+Expected response:
+
+```json
+{
+  "database": "ok",
+  "version": "12.4.0"
+}
+```
+
+### Test dashboards
+
+- Open key dashboards and verify they load correctly
+- Check that panels render data
+- Verify variables and templating work
+
+### Test data sources
+
+- Navigate to Configuration → Data Sources
+- Test connectivity for critical data sources
+- Verify queries return expected data
+
+### Verify alerts
+
+- Check alert rules are evaluating
+- Verify notifications are being sent
+- Review alert history for anomalies
+
+## Rollback procedures
+
+If you encounter issues after upgrading, you can roll back.
+
+### Database rollback considerations
+
+Database migrations are generally **not reversible**. To roll back:
+
+1. Stop the upgraded Grafana instance
+2. Restore the database backup from before the upgrade
+3. Restore previous Grafana binary/package
+4. Restore previous configuration files
+5. Start Grafana with the previous version
+
+**Important:** Don't downgrade database schema. Always restore from backup.
+
+### Rollback procedure
+
+```sh
+# Stop Grafana
+sudo systemctl stop grafana-server
+
+# Restore database (PostgreSQL example)
+psql -h localhost -U postgres -c "DROP DATABASE grafana;"
+psql -h localhost -U postgres -c "CREATE DATABASE grafana OWNER grafana;"
+pg_restore -h localhost -U grafana -d grafana grafana-pre-upgrade.dump
+
+# Downgrade package (Debian/Ubuntu example)
+sudo apt-get install grafana=11.6.0
+
+# Restore configuration if needed
+sudo cp /backup/grafana-config-20260309/grafana.ini /etc/grafana/
+
+# Start Grafana
+sudo systemctl start grafana-server
+```
+
+## Upgrade best practices
+
+- **Backup first** - Always create a complete backup before upgrading
+- **Test thoroughly** - Test upgrades in non-production environments
+- **Read documentation** - Review release notes and upgrade guides
+- **Check compatibility** - Verify plugin and integration compatibility
+- **Plan maintenance** - Schedule upgrades during low-traffic periods
+- **Monitor closely** - Watch logs and metrics during and after upgrade
+- **Have rollback plan** - Prepare rollback procedures before starting
+- **Stay current** - Regularly upgrade to stay within support lifecycle
+- **Document process** - Record upgrade steps and any issues encountered
+
+## Breaking changes
+
+Major and some minor releases may include breaking changes:
+
+- API endpoint changes
+- Configuration option deprecations
+- Plugin API updates
+- Database schema changes
+- Feature removals
+
+Always review the breaking changes documentation for your target version.
+
+## Getting help
+
+If you encounter issues during an upgrade:
+
+- Review logs for specific error messages
+- Search the [Grafana community forum](https://community.grafana.com)
+- Check [GitHub issues](https://github.com/grafana/grafana/issues)
+- Consult the [upgrade guides](https://grafana.com/docs/grafana/latest/upgrade-guide/)
+- Contact Grafana support (Enterprise customers)
+
+## Next steps
+
+- Set up [monitoring](./monitoring) for your upgraded instance
+- Review [high availability](./high-availability) configurations
+- Update your [backup procedures](./backup-restore) if needed

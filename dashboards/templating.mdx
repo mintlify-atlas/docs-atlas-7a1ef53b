@@ -1,0 +1,603 @@
+---
+title: Dashboard Templating
+description: Master template syntax and create dynamic, reusable dashboards with advanced variable interpolation in Grafana.
+---
+
+# Dashboard Templating
+
+Templating allows you to create dynamic, reusable dashboards that adapt based on variable values. Template variables can be used throughout your dashboard in queries, panel titles, annotations, and links.
+
+## Template Syntax
+
+Grafana uses a simple templating syntax for variable interpolation:
+
+```typescript
+// Basic syntax
+${variable_name}         // Standard interpolation
+$variable_name           // Shorthand (no spaces/special chars)
+[[variable_name]]        // Legacy syntax (still supported)
+
+// With formatting
+${variable_name:format}  // Apply format to variable value
+```
+
+## Variable Interpolation
+
+### In Queries
+
+Template variables are most commonly used in data source queries:
+
+<CodeGroup>
+```promql Prometheus
+# Simple substitution
+rate(http_requests_total{instance="${server}"}[5m])
+
+# Multi-value with regex
+rate(http_requests_total{instance=~"${server:regex}"}[5m])
+
+# Multiple variables
+rate(
+  http_requests_total{
+    instance=~"${server:regex}",
+    job="${job}",
+    env="${environment}"
+  }[${interval}]
+)
+
+# Using interval variable
+rate(metric[${__rate_interval}])
+```
+
+```sql MySQL/PostgreSQL  
+# Basic interpolation
+SELECT 
+  time,
+  value
+FROM metrics
+WHERE host = '${host}'
+  AND time >= ${__from:date:iso}
+  AND time <= ${__to:date:iso}
+
+# Multi-value IN clause
+SELECT *
+FROM metrics
+WHERE host IN (${host:singlequote})
+  AND metric_name IN (${metric:singlequote})
+
+# Dynamic table name
+SELECT * FROM ${environment}_metrics
+WHERE timestamp > ${__from:date:seconds}
+```
+
+```flux InfluxDB Flux
+// Variable in bucket name
+from(bucket: "${bucket}")
+  |> range(
+    start: ${__from:date:iso},
+    stop: ${__to:date:iso}
+  )
+  |> filter(fn: (r) => r.host == "${host}")
+
+// Multi-value filter
+from(bucket: "${bucket}")
+  |> range(start: -1h)
+  |> filter(fn: (r) => 
+    r.host =~ /^(${host:regex})$/
+  )
+```
+
+```json Elasticsearch
+{
+  "query": {
+    "bool": {
+      "filter": [
+        { "term": { "hostname.keyword": "${hostname}" } },
+        { "terms": { "environment": ${environment:json} } },
+        {
+          "range": {
+            "@timestamp": {
+              "gte": "${__from:date:iso}",
+              "lte": "${__to:date:iso}"
+            }
+          }
+        }
+      ]
+    }
+  }
+}
+```
+</CodeGroup>
+
+### In Panel Titles
+
+Make panel titles dynamic:
+
+```markdown
+# Single variable
+CPU Usage - ${server}
+
+# Multiple variables
+${environment} - ${datacenter} - ${server}
+
+# With built-in variables
+Requests (${__from:date:YYYY-MM-DD} to ${__to:date:YYYY-MM-DD})
+
+# Conditional text (using variable value)
+${server} Status - Last ${__range_s} seconds
+```
+
+### In Descriptions
+
+Add context with variable values:
+
+```markdown
+This panel shows metrics for **${server}** in the **${environment}** environment.
+
+Data source: ${datasource}
+Time range: ${__from:date} to ${__to:date}
+Interval: ${__interval}
+```
+
+### In Annotations
+
+Filter annotations using variables:
+
+```typescript
+// Annotation query configuration
+{
+  datasource: { type: "prometheus", uid: "${datasource}" },
+  expr: 'ALERTS{instance="${server}",severity="critical"}',
+  tagKeys: "alertname,instance",
+  titleFormat: "${environment} Alert",
+  textFormat: "Alert on ${server}"
+}
+```
+
+### In Links
+
+Create dynamic dashboard and external links:
+
+```typescript
+// Dashboard link
+{
+  title: "Detailed ${server} Dashboard",
+  url: "/d/details?var-server=${server}&var-env=${environment}",
+  keepTime: true
+}
+
+// External link with multiple variables
+{
+  title: "View in External System",
+  url: "https://monitoring.example.com/${environment}/${datacenter}/${server}",
+  targetBlank: true
+}
+
+// Data link in panel
+{
+  title: "Drill down to ${__field.labels.instance}",
+  url: "/d/host-details?var-host=${__field.labels.instance}&${__url_time_range}"
+}
+```
+
+## Variable Formats
+
+Apply different formats to variable values:
+
+### Text Formats
+
+```typescript
+${variable:text}         // Display text instead of value
+${variable:percentencode}  // URL percent encoding
+${variable:raw}          // Raw value without escaping
+${variable:query}        // Query parameter format
+```
+
+### Multi-Value Formats
+
+```typescript
+${variable:csv}          // Comma-separated: a,b,c
+${variable:pipe}         // Pipe-separated: a|b|c  
+${variable:regex}        // Regex format: (a|b|c)
+${variable:lucene}       // Lucene format: ("a" OR "b" OR "c")
+${variable:json}         // JSON array: ["a","b","c"]
+${variable:distributed}  // Distributed format (ClickHouse)
+${variable:singlequote}  // Single quotes: 'a','b','c'
+${variable:doublequote}  // Double quotes: "a","b","c"
+${variable:sqlstring}    // SQL string: 'a','b','c'
+${variable:date}         // Date format (for time variables)
+${variable:glob}         // Glob format: {a,b,c}
+${variable:queryparam}   // Query parameter: var-name=a&var-name=b
+```
+
+### Date Formats
+
+Format time range variables:
+
+```typescript
+// Built-in date formats
+${__from:date:iso}           // 2024-01-01T00:00:00Z
+${__from:date:seconds}       // 1704067200 (Unix timestamp)
+${__from:date:YYYY-MM-DD}    // 2024-01-01
+${__from:date:MM/DD/YYYY}    // 01/01/2024
+${__from:date:YYYY-MM-DD HH:mm:ss}  // 2024-01-01 00:00:00
+
+// Relative times
+${__from:date:iso}           // Absolute ISO time
+${__to:date:iso}             // Absolute ISO time
+
+// Range calculations  
+${__range_s}                 // Range in seconds
+${__range_ms}                // Range in milliseconds
+${__range}                   // Range as "5m", "1h", etc.
+```
+
+## Advanced Templating
+
+### Nested Variables
+
+Variables can reference other variables:
+
+```typescript
+// Define base variable
+{
+  name: "cluster",
+  type: "custom",
+  query: "prod,staging"
+}
+
+// Use in another variable's query
+{
+  name: "namespace",
+  type: "query",
+  query: "label_values(kube_namespace_labels{cluster='${cluster}'}, namespace)"
+}
+
+// Use both in panel query
+kube_pod_info{cluster="${cluster}", namespace="${namespace}"}
+```
+
+### Chained Variables
+
+Create variable dependencies:
+
+```typescript
+// Level 1: Region
+{
+  name: "region",
+  type: "query",
+  query: "label_values(metric, region)"
+}
+
+// Level 2: Datacenter (depends on region)
+{
+  name: "datacenter",
+  type: "query",
+  query: "label_values(metric{region='${region}'}, datacenter)"
+}
+
+// Level 3: Server (depends on datacenter)
+{
+  name: "server",
+  type: "query",
+  query: "label_values(metric{datacenter='${datacenter}'}, server)"
+}
+```
+
+<Warning>
+  Be careful with variable chains. When a parent variable changes, all dependent variables refresh, which can cause performance issues with many levels.
+</Warning>
+
+### Conditional Templating
+
+Use variable values to control behavior:
+
+```promql
+# Different queries based on environment
+# In "production" environment
+rate(production_metrics{instance="${server}"}[5m])
+
+# Create a constant variable for conditional logic
+# constant variable: is_production = ${environment:regex} == "production"
+```
+
+### Dynamic Panel Repetition
+
+Repeat panels based on variable values:
+
+```typescript
+// Panel configuration
+{
+  title: "${server} Metrics",
+  repeat: "server",           // Variable to repeat on
+  repeatDirection: "h",       // Horizontal layout
+  maxPerRow: 3,               // 3 panels per row
+  targets: [
+    {
+      expr: "rate(metric{instance='${server}'}[5m])"
+    }
+  ]
+}
+```
+
+### Row Repetition
+
+Repeat entire rows:
+
+```typescript
+{
+  type: "row",
+  title: "${region} Metrics",
+  repeat: "region",
+  panels: [
+    // Panels within this row also use ${region}
+  ]
+}
+```
+
+## Built-in Template Variables
+
+Grafana provides several built-in variables:
+
+### Time Range Variables
+
+```typescript
+$__from          // Start time (milliseconds)
+$__to            // End time (milliseconds)  
+$__interval      // Dynamic interval (e.g., "1m")
+$__interval_ms   // Interval in milliseconds
+$__range         // Time range (e.g., "6h")
+$__range_s       // Range in seconds
+$__range_ms      // Range in milliseconds
+
+// Formatted times
+${__from:date:iso}              // ISO 8601 format
+${__from:date:seconds}          // Unix timestamp
+${__from:date:YYYY-MM-DD}       // Custom format
+```
+
+### Rate Interval
+
+```typescript
+$__rate_interval  // Recommended for rate() functions
+                  // At least 4x scrape interval
+
+// Usage in Prometheus
+rate(metric[$__rate_interval])
+```
+
+### Field Variables (Data Links)
+
+```typescript
+${__field.name}                  // Field name
+${__field.labels.labelname}      // Specific label value  
+${__field.labels.__name__}       // Metric name
+${__value.raw}                   // Raw field value
+${__value.numeric}               // Numeric value
+${__value.text}                  // Text representation
+${__value.time}                  // Time value (if applicable)
+```
+
+### Series Variables (Panel Repeat)
+
+```typescript
+${__series.name}     // Series name in repeated panel
+```
+
+### Dashboard Variables
+
+```typescript
+$__dashboard         // Current dashboard name
+${__dashboard.uid}   // Dashboard UID
+$__org_id           // Organization ID
+$__org_name         // Organization name  
+$__user_id          // Current user ID
+$__user_login       // Current user login
+$__user_email       // Current user email
+```
+
+### URL Variables
+
+```typescript
+${__url_time_range}  // Current time range as URL params
+                     // from=now-6h&to=now
+```
+
+## Template Functions
+
+While Grafana doesn't have built-in template functions, you can achieve similar results:
+
+### String Manipulation via Regex
+
+```typescript
+// Variable with regex capture
+{
+  name: "server_short",
+  type: "query",
+  query: "label_values(instance)",
+  regex: "/([^.]+)\\..*/"  // Extract hostname before first dot
+}
+
+// Input: server01.prod.example.com
+// Output: server01
+```
+
+### Mathematical Operations
+
+Use query expressions:
+
+```promql
+# Instead of template math, use PromQL
+rate(metric[${interval}]) * ${multiplier}
+
+# Where multiplier is a constant variable
+{
+  name: "multiplier",
+  type: "constant",
+  query: "100"
+}
+```
+
+## Best Practices
+
+### Query Optimization
+
+<Steps>
+  <Step title="Use Appropriate Refresh">
+    Set `refresh` to match data update frequency
+  </Step>
+  <Step title="Limit Variable Cardinality">
+    Avoid variables with thousands of values
+  </Step>
+  <Step title="Use Constants for Static Values">
+    Don't query for values that never change
+  </Step>
+  <Step title="Cache When Possible">
+    Use `onDashboardLoad` refresh for static data
+  </Step>
+</Steps>
+
+### Naming Conventions
+
+```typescript
+// Good variable names
+server_name          // Clear and descriptive
+environment          // Full word
+time_interval        // Underscores for readability
+
+// Avoid
+srv                  // Too abbreviated
+e                    // Single letter
+ServerName           // Use lowercase
+server-name          // Use underscores not hyphens
+```
+
+### Variable Organization
+
+Order variables logically:
+
+1. **Data source variables** first
+2. **High-level filters** (environment, region)
+3. **Mid-level filters** (datacenter, cluster)
+4. **Low-level filters** (server, pod)
+5. **Display options** (interval, aggregation)
+6. **Hidden variables** last
+
+### Performance Considerations
+
+<Warning>
+  Keep these performance tips in mind:
+</Warning>
+
+- Limit variable chains to 3-4 levels max
+- Avoid regex on large result sets
+- Use multi-value variables sparingly
+- Set reasonable `maxPerRow` for repeated panels
+- Consider hiding variables not needed by users
+
+## Common Patterns
+
+### Multi-Tenant Dashboards
+
+```typescript
+// Tenant selector
+{
+  name: "tenant",
+  type: "query",
+  query: "label_values(tenant_id)",
+  multi: false
+}
+
+// All queries filter by tenant
+rate(metric{tenant="${tenant}"}[5m])
+```
+
+### Environment-Based Configuration
+
+```typescript
+// Environment selector
+{
+  name: "env",
+  type: "custom",
+  query: "production,staging,development"
+}
+
+// Different data sources per environment
+{
+  name: "datasource",
+  type: "datasource",
+  query: "prometheus",
+  regex: "/${env}-.*/"
+}
+```
+
+### Dynamic Aggregation
+
+```typescript
+// Aggregation variable
+{
+  name: "aggregation",
+  type: "custom",
+  query: "avg,sum,min,max,count",
+  current: { value: "avg", text: "Average" }
+}
+
+// Use in query (requires query builder support)
+${aggregation}(rate(metric[5m])) by (instance)
+```
+
+### Time Window Comparison
+
+```typescript
+// Comparison period
+{
+  name: "compare_period",
+  type: "custom",
+  query: "1h,1d,1w",
+  current: { value: "1d", text: "1 day ago" }
+}
+
+// Current period
+rate(metric[5m])
+
+// Comparison period (offset)
+rate(metric[5m] offset ${compare_period})
+```
+
+## Troubleshooting
+
+### Variable Not Interpolated
+
+- Check variable name spelling and syntax
+- Verify variable has a current value
+- Check for hidden or disabled variables
+- Review variable scope and permissions
+
+### Incorrect Format
+
+- Use correct format for data source type
+- Check multi-value variable formatting
+- Verify escape characters in regex
+
+### Performance Issues
+
+- Reduce variable query complexity
+- Limit number of chained variables
+- Decrease auto-refresh frequency
+- Use constant variables for static data
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Variables" href="/dashboards/variables" icon="sliders">
+    Learn about all variable types and configuration
+  </Card>
+  <Card title="Creating Dashboards" href="/dashboards/creating-dashboards" icon="plus">
+    Build dashboards using templates
+  </Card>
+  <Card title="Panels" href="/dashboards/panels" icon="chart-bar">
+    Apply templates in panel queries
+  </Card>
+  <Card title="Sharing" href="/dashboards/sharing" icon="share">
+    Share templated dashboards
+  </Card>
+</CardGroup>

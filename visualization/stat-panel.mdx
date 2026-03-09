@@ -1,0 +1,483 @@
+---
+title: Stat Panel
+description: Display single values with optional sparklines and rich formatting
+---
+
+The Stat panel displays a single value with optional background coloring, sparklines, and percentage change indicators.
+
+## Overview
+
+The Stat panel is ideal for displaying:
+
+- Current values of metrics
+- Statistical summaries (min, max, average)
+- Percentage changes over time
+- Key performance indicators (KPIs)
+- Status indicators with color coding
+
+## Panel Options
+
+The Stat panel is defined in `public/app/plugins/panel/stat/module.tsx:18`:
+
+```typescript
+export const plugin = new PanelPlugin<Options>(StatPanel)
+  .useFieldConfig()
+  .setPanelOptions((builder) => {
+    addStandardDataReduceOptions(builder);
+    addOrientationOption(builder, mainCategory);
+    commonOptionsBuilder.addTextSizeOptions(builder, { 
+      withTitle: true, 
+      withValue: true, 
+      withPercentChange: true 
+    });
+    // ... additional options
+  })
+  .setNoPadding()
+  .setPanelChangeHandler(statPanelChangedHandler);
+```
+
+### Options Interface
+
+From `public/app/plugins/panel/stat/panelcfg.gen.ts:15`:
+
+```typescript
+interface Options extends SingleStatBaseOptions {
+  colorMode: BigValueColorMode;
+  graphMode: BigValueGraphMode;
+  justifyMode: BigValueJustifyMode;
+  percentChangeColorMode: PercentChangeColorMode;
+  showPercentChange: boolean;
+  textMode: BigValueTextMode;
+  wideLayout: boolean;
+}
+```
+
+### Default Options
+
+From `public/app/plugins/panel/stat/panelcfg.gen.ts:25`:
+
+```typescript
+const defaultOptions: Partial<Options> = {
+  colorMode: BigValueColorMode.Value,
+  graphMode: BigValueGraphMode.Area,
+  justifyMode: BigValueJustifyMode.Auto,
+  percentChangeColorMode: PercentChangeColorMode.Standard,
+  showPercentChange: false,
+  textMode: BigValueTextMode.Auto,
+  wideLayout: true,
+};
+```
+
+### Text Mode
+
+Control what text is displayed (from `public/app/plugins/panel/stat/module.tsx:28`):
+
+```typescript
+enum BigValueTextMode {
+  Auto = 'auto',             // Automatic based on space
+  Value = 'value',           // Show only the value
+  ValueAndName = 'value_and_name',  // Show value and series name
+  Name = 'name',             // Show only the series name
+  None = 'none'              // No text
+}
+```
+
+### Color Mode
+
+Control how color is applied (from `public/app/plugins/panel/stat/module.tsx:62`):
+
+```typescript
+enum BigValueColorMode {
+  None = 'none',                    // No coloring
+  Value = 'value',                  // Color the value text
+  Background = 'background',        // Gradient background
+  BackgroundSolid = 'background_solid'  // Solid color background
+}
+```
+
+### Graph Mode
+
+Display a sparkline graph (from `public/app/plugins/panel/stat/module.tsx:82`):
+
+```typescript
+enum BigValueGraphMode {
+  None = 'none',  // No graph
+  Area = 'area'   // Area sparkline
+}
+```
+
+### Justify Mode
+
+Control text alignment (from `public/app/plugins/panel/stat/module.tsx:95`):
+
+```typescript
+enum BigValueJustifyMode {
+  Auto = 'auto',     // Automatic based on layout
+  Center = 'center'  // Always center
+}
+```
+
+### Wide Layout
+
+When using `textMode: 'value_and_name'`, the wide layout option controls whether the name and value are displayed side-by-side (wide) or stacked (from `public/app/plugins/panel/stat/module.tsx:47`):
+
+```typescript
+wideLayout: boolean  // Default: true
+```
+
+### Percent Change
+
+Display percentage change from previous value (from `public/app/plugins/panel/stat/module.tsx:107`):
+
+```typescript
+showPercentChange: boolean  // Default: false
+```
+
+**Percent Change Color Mode** (from `public/app/plugins/panel/stat/module.tsx:114`):
+
+```typescript
+enum PercentChangeColorMode {
+  Standard = 'standard',    // Green for positive, red for negative
+  Inverted = 'inverted',    // Red for positive, green for negative
+  SameAsValue = 'same_as_value'  // Use same color as value
+}
+```
+
+<Note>
+Percent change is only available when not displaying all values (`reduceOptions.values: false`).
+</Note>
+
+### Orientation
+
+Control layout direction:
+
+```typescript
+enum VizOrientation {
+  Auto = 'auto',         // Automatic based on panel size
+  Horizontal = 'horizontal',
+  Vertical = 'vertical'
+}
+```
+
+### Data Reduce Options
+
+Control how multiple values are reduced to a single value:
+
+```typescript
+interface ReduceDataOptions {
+  values: boolean;    // Show all values or reduce to one
+  fields?: string;    // Field name pattern
+  limit?: number;     // Max number of values to show
+  calcs: string[];    // Reducer functions: 'last', 'mean', 'sum', etc.
+}
+```
+
+Common reducers:
+- `last` - Last value (default)
+- `first` - First value
+- `mean` - Average
+- `sum` - Sum of all values
+- `min` - Minimum value
+- `max` - Maximum value
+- `count` - Number of values
+
+### Text Size Options
+
+Control text sizing:
+
+```typescript
+interface TextSize {
+  titleSize?: number;        // Title font size
+  valueSize?: number;        // Value font size
+  percentChangeSize?: number; // Percent change font size
+}
+```
+
+## Panel JSON Examples
+
+### Basic Stat Panel
+
+```json
+{
+  "type": "stat",
+  "title": "CPU Usage",
+  "gridPos": { "x": 0, "y": 0, "w": 6, "h": 4 },
+  "targets": [
+    {
+      "datasource": { "type": "prometheus" },
+      "expr": "avg(cpu_usage_percent)"
+    }
+  ],
+  "options": {
+    "colorMode": "value",
+    "graphMode": "area",
+    "textMode": "value_and_name",
+    "justifyMode": "auto",
+    "wideLayout": true,
+    "showPercentChange": false,
+    "reduceOptions": {
+      "values": false,
+      "calcs": ["lastNotNull"]
+    }
+  },
+  "fieldConfig": {
+    "defaults": {
+      "unit": "percent",
+      "min": 0,
+      "max": 100,
+      "thresholds": {
+        "mode": "absolute",
+        "steps": [
+          { "value": 0, "color": "green" },
+          { "value": 70, "color": "yellow" },
+          { "value": 90, "color": "red" }
+        ]
+      }
+    },
+    "overrides": []
+  }
+}
+```
+
+### Stat with Background Color
+
+```json
+{
+  "type": "stat",
+  "title": "Request Rate",
+  "options": {
+    "colorMode": "background",
+    "graphMode": "none",
+    "textMode": "value",
+    "reduceOptions": {
+      "values": false,
+      "calcs": ["last"]
+    }
+  },
+  "fieldConfig": {
+    "defaults": {
+      "unit": "reqps",
+      "decimals": 2,
+      "thresholds": {
+        "mode": "absolute",
+        "steps": [
+          { "value": 0, "color": "blue" },
+          { "value": 1000, "color": "green" },
+          { "value": 5000, "color": "yellow" },
+          { "value": 10000, "color": "red" }
+        ]
+      },
+      "color": {
+        "mode": "thresholds"
+      }
+    }
+  }
+}
+```
+
+### Stat with Percent Change
+
+```json
+{
+  "type": "stat",
+  "title": "Active Users",
+  "options": {
+    "colorMode": "value",
+    "graphMode": "area",
+    "textMode": "value_and_name",
+    "showPercentChange": true,
+    "percentChangeColorMode": "standard",
+    "reduceOptions": {
+      "values": false,
+      "calcs": ["lastNotNull"]
+    },
+    "text": {
+      "titleSize": 16,
+      "valueSize": 32,
+      "percentChangeSize": 14
+    }
+  },
+  "fieldConfig": {
+    "defaults": {
+      "unit": "short",
+      "decimals": 0
+    }
+  }
+}
+```
+
+### Multiple Stats
+
+```json
+{
+  "type": "stat",
+  "title": "System Overview",
+  "options": {
+    "colorMode": "background_solid",
+    "graphMode": "none",
+    "textMode": "value_and_name",
+    "orientation": "horizontal",
+    "reduceOptions": {
+      "values": false,
+      "calcs": ["lastNotNull"]
+    }
+  },
+  "targets": [
+    {
+      "datasource": { "type": "prometheus" },
+      "expr": "up{job='node'}",
+      "legendFormat": "Nodes Up"
+    },
+    {
+      "datasource": { "type": "prometheus" },
+      "expr": "count(up{job='node'} == 0)",
+      "legendFormat": "Nodes Down"
+    },
+    {
+      "datasource": { "type": "prometheus" },
+      "expr": "avg(cpu_usage_percent)",
+      "legendFormat": "Avg CPU"
+    }
+  ],
+  "fieldConfig": {
+    "defaults": {
+      "thresholds": {
+        "mode": "absolute",
+        "steps": [
+          { "value": 0, "color": "green" },
+          { "value": 50, "color": "yellow" },
+          { "value": 80, "color": "red" }
+        ]
+      }
+    },
+    "overrides": [
+      {
+        "matcher": { "id": "byName", "options": "Nodes Down" },
+        "properties": [
+          {
+            "id": "thresholds",
+            "value": {
+              "mode": "absolute",
+              "steps": [
+                { "value": 0, "color": "green" },
+                { "value": 1, "color": "red" }
+              ]
+            }
+          }
+        ]
+      },
+      {
+        "matcher": { "id": "byName", "options": "Avg CPU" },
+        "properties": [
+          { "id": "unit", "value": "percent" }
+        ]
+      }
+    ]
+  }
+}
+```
+
+## Advanced Features
+
+### Custom Thresholds
+
+Use thresholds to define color ranges based on values:
+
+```json
+{
+  "thresholds": {
+    "mode": "absolute",
+    "steps": [
+      { "value": 0, "color": "green" },
+      { "value": 50, "color": "yellow" },
+      { "value": 80, "color": "red" }
+    ]
+  }
+}
+```
+
+Or use percentage mode:
+
+```json
+{
+  "thresholds": {
+    "mode": "percentage",
+    "steps": [
+      { "value": 0, "color": "green" },
+      { "value": 50, "color": "yellow" },
+      { "value": 80, "color": "red" }
+    ]
+  }
+}
+```
+
+### Value Mappings
+
+Map specific values to custom text and colors:
+
+```json
+{
+  "mappings": [
+    {
+      "type": "value",
+      "value": "0",
+      "text": "Down",
+      "color": "red"
+    },
+    {
+      "type": "value",
+      "value": "1",
+      "text": "Up",
+      "color": "green"
+    },
+    {
+      "type": "range",
+      "from": 2,
+      "to": 10,
+      "text": "Multiple",
+      "color": "blue"
+    }
+  ]
+}
+```
+
+### Data Links
+
+Add clickable links to stat values:
+
+```json
+{
+  "links": [
+    {
+      "title": "View Details",
+      "url": "/d/detailed-dashboard",
+      "targetBlank": false
+    }
+  ]
+}
+```
+
+## Implementation Details
+
+The Stat panel extends `SingleStatBaseOptions` which provides common functionality shared with the Gauge and Bar Gauge panels.
+
+Key files:
+- `public/app/plugins/panel/stat/module.tsx` - Plugin definition
+- `public/app/plugins/panel/stat/StatPanel.tsx` - Component implementation
+- `public/app/plugins/panel/stat/panelcfg.gen.ts` - Generated types
+- `public/app/plugins/panel/stat/common.ts` - Shared utilities
+
+<Note>
+The Stat panel uses `setNoPadding()` to remove default panel padding for edge-to-edge display.
+</Note>
+
+## Related Resources
+
+<CardGroup cols={2}>
+  <Card title="Gauge Panel" icon="tachometer" href="/visualization/gauge-panel">
+    Display values with radial gauges
+  </Card>
+  <Card title="Graph Panel" icon="chart-line" href="/visualization/graph-panel">
+    Visualize time series data
+  </Card>
+</CardGroup>

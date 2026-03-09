@@ -1,0 +1,394 @@
+---
+title: Backend architecture
+description: Deep dive into Grafana's Go backend architecture
+---
+
+# Backend architecture
+
+Grafana's backend is written in Go and follows a clean, service-oriented architecture with compile-time dependency injection.
+
+## Directory structure
+
+The backend code lives in `pkg/` and is organized by concern:
+
+| Directory | Purpose |
+|-----------|----------|
+| `pkg/api/` | HTTP API handlers and routes |
+| `pkg/services/` | Business logic by domain (alerting, dashboards, auth, etc.) |
+| `pkg/server/` | Server initialization and Wire DI setup |
+| `pkg/tsdb/` | Time series database query backends |
+| `pkg/plugins/` | Plugin system and loader |
+| `pkg/infra/` | Logging, metrics, database access |
+| `pkg/middleware/` | HTTP middleware |
+| `pkg/setting/` | Configuration management |
+| `pkg/models/` | Shared data models |
+
+## Dependency injection with Wire
+
+Grafana uses [Google Wire](https://github.com/google/wire) for compile-time dependency injection, providing type safety and circular dependency detection.
+
+### Wire configuration
+
+The main Wire configuration is in `pkg/server/wire.go`:
+
+```go
+//go:build wireinject
+// +build wireinject
+
+package server
+
+import (
+    "github.com/google/wire"
+    // ... imports
+)
+
+var wireBasicSet = wire.NewSet(
+    annotationsimpl.ProvideService,
+    wire.Bind(new(annotations.Repository), new(*annotationsimpl.RepositoryImpl)),
+    query.ProvideService,
+    wire.Bind(new(query.Service), new(*query.ServiceImpl)),
+    // ... more providers
+)
+
+func Initialize(ctx context.Context, cfg *setting.Cfg, opts Options) (*Server, error) {
+    wire.Build(wireExtsSet)
+    return &Server{}, nil
+}
+```
+
+Key Wire patterns used in `pkg/server/wire.go`:
+
+- **Provider functions** - Functions like `ProvideService()` that return initialized services
+- **Wire sets** - Groups of related providers (`wireBasicSet`, `withOTelSet`)
+- **Interface bindings** - `wire.Bind()` to bind implementations to interfaces
+- **Injector functions** - `Initialize()` functions that Wire generates implementations for
+
+### Regenerating Wire code
+
+After modifying service initialization or dependencies:
+
+```bash
+make gen-go
+```
+
+This generates `pkg/server/wire_gen.go` with the actual initialization code.
+
+**Common Wire patterns:**
+
+```go
+// Provider function
+func ProvideMyService(db *sqlstore.SQLStore, cfg *setting.Cfg) *MyService {
+    return &MyService{
+        db:  db,
+        cfg: cfg,
+    }
+}
+
+// Add to wire.go
+var wireSet = wire.NewSet(
+    ProvideMyService,
+    wire.Bind(new(MyServiceInterface), new(*MyService)),
+)
+```
+
+## Service layer architecture
+
+Services contain business logic and are organized by domain.
+
+### Service structure
+
+Typical service structure in `pkg/services/<domain>/`:
+
+```
+pkg/services/dashboards/
+├── service/           # Service implementation
+│   ├── service.go     # Main service
+│   └── client/        # Client wrappers
+├── database/          # Data access layer
+│   └── database.go
+├── dashboards.go      # Interface definitions
+└── models.go          # Domain models
+```
+
+### Service interface pattern
+
+Services implement interfaces defined in the same package:
+
+```go
+// pkg/services/dashboards/dashboards.go
+type Service interface {
+    GetDashboard(ctx context.Context, query *GetDashboardQuery) (*Dashboard, error)
+    SaveDashboard(ctx context.Context, dto *SaveDashboardDTO) (*Dashboard, error)
+    DeleteDashboard(ctx context.Context, dashboardID int64, orgID int64) error
+}
+
+// pkg/services/dashboards/service/service.go
+type DashboardServiceImpl struct {
+    store DashboardStore
+    cfg   *setting.Cfg
+}
+
+func (s *DashboardServiceImpl) GetDashboard(ctx context.Context, query *GetDashboardQuery) (*Dashboard, error) {
+    // Business logic here
+}
+```
+
+**Key principles:**
+- Interfaces in the package root, implementations in `service/` or implementation-specific subdirectories
+- Business logic in services, not in API handlers
+- Services depend on other services through interfaces
+- Data access through repository/store patterns
+
+## API handlers
+
+HTTP API handlers live in `pkg/api/` and delegate to services.
+
+### API structure
+
+```go
+// pkg/api/dashboard.go
+func (hs *HTTPServer) GetDashboard(c *contextmodel.ReqContext) response.Response {
+    dashboardID := web.Params(c.Req)[":dashboardId"]
+    
+    // Validation
+    id, err := strconv.ParseInt(dashboardID, 10, 64)
+    if err != nil {
+        return response.Error(http.StatusBadRequest, "Invalid dashboard ID", err)
+    }
+    
+    // Delegate to service
+    dashboard, err := hs.dashboardService.GetDashboard(c.Req.Context(), &dashboards.GetDashboardQuery{
+        ID:    id,
+        OrgID: c.OrgID,
+    })
+    if err != nil {
+        return response.Error(http.StatusInternalServerError, "Failed to get dashboard", err)
+    }
+    
+    return response.JSON(http.StatusOK, dashboard)
+}
+```
+
+**API handler responsibilities:**
+- Request parsing and validation
+- Authentication/authorization checks
+- Calling service methods
+- Response formatting
+- Error handling
+
+### Routing
+
+Routes are registered in `pkg/api/api.go`:
+
+```go
+func (hs *HTTPServer) registerRoutes() {
+    hs.RouteRegister.Group("/api", func(apiRoute routing.RouteRegister) {
+        apiRoute.Group("/dashboards", func(dashboardRoute routing.RouteRegister) {
+            dashboardRoute.Get("/db/:slug", hs.GetDashboard)
+            dashboardRoute.Post("/db", hs.PostDashboard)
+            dashboardRoute.Delete("/db/:slug", hs.DeleteDashboardBySlug)
+        })
+    })
+}
+```
+
+## Database access
+
+Database access is handled through the `sqlstore` package.
+
+### SQLStore
+
+The main database interface is `pkg/services/sqlstore/sqlstore.go`:
+
+```go
+type SQLStore struct {
+    cfg         *setting.Cfg
+    engine      *xorm.Engine
+    dialect     migrator.Dialect
+    log         log.Logger
+}
+
+func (ss *SQLStore) WithDbSession(ctx context.Context, callback dbutil.SessionFunc) error {
+    return ss.engine.NewSession().WithContext(ctx).Begin(callback)
+}
+```
+
+**Database patterns:**
+- XORM for ORM
+- Raw SQL for complex queries
+- Transactions via `WithDbSession` or `WithTransactionalDbSession`
+- Migration system in `pkg/services/sqlstore/migrations/`
+
+### Example repository
+
+```go
+type DashboardStore interface {
+    GetDashboard(ctx context.Context, query *GetDashboardQuery) (*Dashboard, error)
+}
+
+type dashboardStore struct {
+    sqlStore *sqlstore.SQLStore
+}
+
+func (s *dashboardStore) GetDashboard(ctx context.Context, query *GetDashboardQuery) (*Dashboard, error) {
+    dashboard := &Dashboard{}
+    err := s.sqlStore.WithDbSession(ctx, func(sess *session.SessionDB) error {
+        exists, err := sess.Where("id = ? AND org_id = ?", query.ID, query.OrgID).Get(dashboard)
+        if !exists {
+            return dashboards.ErrDashboardNotFound
+        }
+        return err
+    })
+    return dashboard, err
+}
+```
+
+## Plugin backend system
+
+Backend plugins run as separate processes and communicate via gRPC.
+
+### Plugin structure
+
+From `pkg/plugins/plugins.go`:
+
+```go
+type Plugin struct {
+    JSONData        // Metadata from plugin.json
+    FS              // File system access
+    Class           // Core or external
+    Signature       // Signature validation
+    client          backendplugin.Plugin
+    Renderer        pluginextensionv2.RendererPlugin
+}
+
+// Backend plugin interface
+type PluginClient interface {
+    backend.QueryDataHandler
+    backend.CheckHealthHandler
+    backend.CallResourceHandler
+    backend.StreamHandler
+}
+```
+
+### Plugin loading
+
+Plugins are discovered and loaded through a pipeline:
+
+1. **Discovery** - Find plugin directories
+2. **Validation** - Check signatures and compatibility
+3. **Initialization** - Load plugin.json, start backend process
+4. **Registration** - Register with plugin registry
+
+See `pkg/plugins/manager/pipeline/` for pipeline implementation.
+
+## Data source query system
+
+Data source backends live in `pkg/tsdb/`:
+
+```
+pkg/tsdb/
+├── prometheus/        # Prometheus data source
+├── loki/             # Loki data source
+├── grafana-pyroscope-datasource/
+├── cloudwatch/       # AWS CloudWatch
+└── ...
+```
+
+Each data source implements the `backend.QueryDataHandler` interface.
+
+## Infrastructure services
+
+### Logging
+
+```go
+import "github.com/grafana/grafana/pkg/infra/log"
+
+logger := log.New("my-service")
+logger.Info("Processing request", "userId", userID)
+logger.Error("Failed to save", "error", err)
+```
+
+### Metrics
+
+Prometheus metrics via `pkg/infra/metrics/`:
+
+```go
+var requestCounter = prometheus.NewCounterVec(
+    prometheus.CounterOpts{
+        Name: "grafana_api_requests_total",
+        Help: "Total API requests",
+    },
+    []string{"endpoint", "status"},
+)
+```
+
+### Tracing
+
+OpenTelemetry tracing via `pkg/infra/tracing/`:
+
+```go
+func (s *Service) DoWork(ctx context.Context) error {
+    ctx, span := s.tracer.Start(ctx, "Service.DoWork")
+    defer span.End()
+    // work here
+}
+```
+
+## Server initialization
+
+The server starts in `pkg/server/server.go`:
+
+1. Load configuration from `conf/defaults.ini` and `conf/custom.ini`
+2. Initialize database connection and run migrations
+3. Wire builds the dependency graph
+4. Start HTTP server
+5. Start background services
+
+```go
+func (s *Server) Run(ctx context.Context) error {
+    // Initialize services via Wire
+    // Start HTTP server
+    // Start background workers
+    // Wait for shutdown signal
+}
+```
+
+## Testing patterns
+
+### Unit tests
+
+```go
+func TestMyService(t *testing.T) {
+    mockStore := &MockDashboardStore{}
+    service := &DashboardServiceImpl{
+        store: mockStore,
+    }
+    
+    result, err := service.GetDashboard(context.Background(), query)
+    require.NoError(t, err)
+    assert.Equal(t, expected, result)
+}
+```
+
+### Integration tests
+
+```bash
+make test-go-integration
+```
+
+Integration tests use real databases (SQLite, PostgreSQL, MySQL) via Docker.
+
+## Key patterns summary
+
+- **Wire DI** - Compile-time dependency injection for type safety
+- **Service interfaces** - Business logic behind interfaces
+- **Thin handlers** - API handlers delegate to services
+- **Repository pattern** - Data access abstraction
+- **Plugin architecture** - Extensibility via gRPC
+- **Migration system** - Database schema versioning
+
+## Related documentation
+
+- [Frontend architecture](./frontend.mdx)
+- [Plugin architecture](./plugins.mdx)
+- [Database architecture](./database.mdx)

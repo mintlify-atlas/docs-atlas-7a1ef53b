@@ -1,0 +1,103 @@
+---
+title: Introduction to Grafana
+description: Learn about Grafana, the open-source platform for monitoring and observability
+---
+
+# Introduction to Grafana
+
+Grafana is the open-source platform for monitoring and observability that allows you to query, visualize, alert on, and understand your metrics no matter where they are stored.
+
+## What is Grafana?
+
+Grafana enables you to create, explore, and share dashboards with your team and foster a data-driven culture. Whether you're monitoring application performance, infrastructure metrics, or business KPIs, Grafana provides a unified interface for all your observability needs.
+
+## Key Features
+
+<CardGroup cols={2}>
+  <Card title="Rich Visualizations" icon="chart-line">
+    Fast and flexible client-side graphs with a multitude of options. Panel plugins offer many different ways to visualize metrics and logs with customizable field configurations, units, and thresholds.
+  </Card>
+  
+  <Card title="Multi-Datasource Support" icon="database">
+    Mix different data sources in the same graph. Specify a data source on a per-query basis, supporting Prometheus, Loki, InfluxDB, PostgreSQL, MySQL, and many more through the plugin system.
+  </Card>
+  
+  <Card title="Dynamic Dashboards" icon="grid">
+    Create dynamic and reusable dashboards with template variables that appear as dropdowns at the top of the dashboard. Control time ranges, queries, and display options interactively.
+  </Card>
+  
+  <Card title="Powerful Alerting" icon="bell">
+    Visually define alert rules for your most important metrics. Grafana continuously evaluates conditions and sends notifications to systems like Slack, PagerDuty, VictorOps, and OpsGenie.
+  </Card>
+  
+  <Card title="Explore View" icon="magnifying-glass">
+    Explore your data through ad-hoc queries and dynamic drilldown. Split view and compare different time ranges, queries, and data sources side by side.
+  </Card>
+  
+  <Card title="Log Exploration" icon="file-lines">
+    Experience seamless switching from metrics to logs with preserved label filters. Quickly search through all your logs or stream them live with integrated log visualization.
+  </Card>
+</CardGroup>
+
+## Architecture Overview
+
+Grafana consists of two main components:
+
+### Backend (`pkg/`)
+
+The Go-based backend handles:
+- **API Server** (`pkg/api/`) - HTTP API handlers and routes for dashboards, data sources, and users
+- **Services** (`pkg/services/`) - Business logic organized by domain (alerting, dashboards, authentication)
+- **Data Source Backends** (`pkg/tsdb/`) - Query backends for time series databases
+- **Plugin System** (`pkg/plugins/`) - Dynamic plugin loading and management
+
+### Frontend (`public/app/`)
+
+The TypeScript/React frontend provides:
+- **Dashboard Interface** (`public/app/features/dashboard/`) - Interactive dashboard editing and viewing
+- **Data Source Management** (`public/app/features/datasources/`) - Configure and test data source connections
+- **Explore** (`public/app/features/explore/`) - Ad-hoc query and data exploration
+- **Alerting UI** (`public/app/features/alerting/`) - Visual alert rule management
+
+## Use Cases
+
+### Infrastructure Monitoring
+Track server metrics, CPU usage, memory consumption, and network traffic across your entire infrastructure with real-time dashboards.
+
+### Application Performance
+Monitor application response times, error rates, and throughput. Correlate metrics with logs to troubleshoot issues quickly.
+
+### Business Analytics
+Visualize business KPIs, sales metrics, and user behavior data from databases and analytics platforms.
+
+### IoT and Sensor Data
+Collect and visualize time-series data from IoT devices and sensors with support for various protocols and data formats.
+
+## Getting Started
+
+<CardGroup cols={2}>
+  <Card title="Quickstart Guide" icon="rocket" href="/quickstart">
+    Get up and running with Grafana in minutes. Install, configure a data source, and create your first dashboard.
+  </Card>
+  
+  <Card title="Core Concepts" icon="book" href="/core-concepts">
+    Learn about dashboards, panels, data sources, queries, and other fundamental concepts in Grafana.
+  </Card>
+</CardGroup>
+
+## Community and Support
+
+Grafana is developed under the AGPL-3.0 license with a vibrant open-source community:
+
+- **GitHub**: [github.com/grafana/grafana](https://github.com/grafana/grafana)
+- **Community Forums**: Active discussions and support from users worldwide
+- **Slack**: Join the official Grafana Slack for real-time community help
+- **Documentation**: Comprehensive guides at [grafana.com/docs](https://grafana.com/docs)
+
+<Note>
+Grafana is production-ready and used by thousands of organizations worldwide, from startups to Fortune 500 companies.
+</Note>
+
+## Next Steps
+
+Ready to dive in? Continue to the [Quickstart Guide](/quickstart) to install Grafana and create your first dashboard, or explore [Core Concepts](/core-concepts) to understand Grafana's architecture and terminology.

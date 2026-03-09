@@ -1,0 +1,176 @@
+---
+title: Architecture overview
+description: Understand Grafana's system architecture and design patterns
+---
+
+# Architecture overview
+
+Grafana is a full-stack observability platform built with a Go backend and a TypeScript/React frontend. This architecture guide covers the key components and design patterns that power Grafana.
+
+## High-level architecture
+
+Grafana follows a modular, service-oriented architecture:
+
+```
+┌─────────────────────────────────────────────────┐
+│           Frontend (TypeScript/React)           │
+│  - Redux state management                       │
+│  - Feature-based organization                   │
+│  - Plugin system (panels, datasources, apps)    │
+└──────────────────┬──────────────────────────────┘
+                   │ HTTP/WebSocket/gRPC
+┌──────────────────▼──────────────────────────────┐
+│              Backend (Go)                       │
+│  - Wire dependency injection                    │
+│  - Service layer architecture                   │
+│  - Plugin backends (gRPC)                       │
+│  - API handlers                                 │
+└──────────────────┬──────────────────────────────┘
+                   │
+┌──────────────────▼──────────────────────────────┐
+│           Storage Layer                         │
+│  - SQLite/PostgreSQL/MySQL                      │
+│  - Unified Storage (K8s-backed)                 │
+└─────────────────────────────────────────────────┘
+```
+
+## Core components
+
+### Backend (`pkg/`)
+
+The Go backend is organized into several key areas:
+
+- **`pkg/server/`** - Server initialization and Wire dependency injection setup
+- **`pkg/services/`** - Business logic organized by domain (dashboards, alerting, users, etc.)
+- **`pkg/api/`** - HTTP API handlers and routing
+- **`pkg/plugins/`** - Plugin system and backend plugin communication
+- **`pkg/tsdb/`** - Data source query backends (Prometheus, Loki, etc.)
+- **`pkg/infra/`** - Infrastructure concerns (logging, metrics, database)
+
+See [Backend architecture](./backend.mdx) for details.
+
+### Frontend (`public/app/`)
+
+The TypeScript/React frontend follows a feature-based architecture:
+
+- **`public/app/core/`** - Shared services, components, and utilities
+- **`public/app/features/`** - Feature modules (dashboard, alerting, explore, etc.)
+- **`public/app/plugins/`** - Built-in frontend plugins
+- **`public/app/store/`** - Redux store configuration with RTK
+
+See [Frontend architecture](./frontend.mdx) for details.
+
+### Plugin system
+
+Grafana's extensibility is powered by a sophisticated plugin system:
+
+- **Panel plugins** - Visualization types (graph, table, etc.)
+- **Data source plugins** - Connect to data sources
+- **App plugins** - Full applications within Grafana
+
+Plugins can have both frontend (TypeScript) and backend (Go) components that communicate via gRPC.
+
+See [Plugin architecture](./plugins.mdx) for details.
+
+### Database layer
+
+Grafana supports multiple database backends:
+
+- **SQLite** (default) - Embedded database for single-server deployments
+- **PostgreSQL** - Recommended for production
+- **MySQL** - Alternative production option
+
+The database layer uses XORM for ORM and includes a migration system.
+
+See [Database architecture](./database.mdx) for details.
+
+## Key design patterns
+
+### Dependency injection with Wire
+
+The backend uses [Google Wire](https://github.com/google/wire) for compile-time dependency injection. Service dependencies are declared in `pkg/server/wire.go` and Wire generates the initialization code.
+
+**Benefits:**
+- Compile-time safety (no runtime DI failures)
+- Circular dependency detection
+- Clear dependency graphs
+
+Regenerate Wire code after changes:
+
+```bash
+make gen-go
+```
+
+### State management with Redux Toolkit
+
+The frontend uses Redux Toolkit (RTK) for state management:
+
+- **RTK Slices** - Modern Redux pattern with reducers and actions
+- **RTK Query** - Data fetching and caching
+- **Middleware** - API clients and side effects
+
+The store is configured in `public/app/store/configureStore.ts`.
+
+### Service-oriented architecture
+
+Both frontend and backend follow service-oriented patterns:
+
+- Business logic lives in service layers, not in API handlers or React components
+- Services implement interfaces defined in the same package
+- Clear separation between data access, business logic, and presentation
+
+## Communication patterns
+
+### HTTP APIs
+
+The backend exposes RESTful APIs for the frontend:
+
+- Standard CRUD operations for resources
+- JSON request/response bodies
+- JWT-based authentication
+
+### gRPC for plugins
+
+Backend plugins communicate with Grafana core via gRPC:
+
+- QueryData - Execute queries
+- CallResource - Custom API endpoints
+- CheckHealth - Health checks
+- Stream - Streaming data
+
+### WebSockets (Grafana Live)
+
+Real-time features use WebSocket connections:
+
+- Dashboard activity
+- Alert notifications
+- Live measurements
+
+## Development workflow
+
+The architecture supports hot-reload for both frontend and backend:
+
+```bash
+# Backend with hot reload
+make run
+
+# Frontend dev server
+yarn start
+```
+
+The backend proxies to the webpack dev server, providing a seamless development experience.
+
+## Monorepo structure
+
+Grafana uses a monorepo with:
+
+- **Go workspaces** (`go.work`) - Backend module management
+- **Yarn workspaces** (`package.json`) - Frontend package management
+- **Shared packages** (`packages/`) - Reusable libraries
+
+## Next steps
+
+- [Backend architecture](./backend.mdx) - Deep dive into Go backend
+- [Frontend architecture](./frontend.mdx) - React and Redux patterns
+- [Plugin architecture](./plugins.mdx) - Build and extend Grafana
+- [Database architecture](./database.mdx) - Data persistence layer

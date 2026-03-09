@@ -1,0 +1,558 @@
+---
+title: Panel Plugin Development
+description: Create custom visualization panels for Grafana dashboards
+keywords:
+  - grafana
+  - panel
+  - visualization
+  - plugin development
+---
+
+# Panel Plugin Development
+
+Panel plugins create custom visualizations for displaying data in Grafana dashboards. This guide covers building panel plugins using React and TypeScript.
+
+## Overview
+
+Panel plugins are frontend-only and consist of:
+- **Visualization component**: React component that renders the data
+- **Options editor**: UI for configuring panel options
+- **Field config**: Configuration for individual data fields
+- **Migrations**: Handle changes between plugin versions
+
+## Creating a Panel Plugin
+
+### Plugin Entry Point
+
+Panel plugins extend the `PanelPlugin` class from `@grafana/data`:
+
+```typescript
+// module.tsx
+import { PanelPlugin } from '@grafana/data';
+import { MyPanel } from './components/MyPanel';
+import { Options, FieldConfig } from './types';
+
+export const plugin = new PanelPlugin<Options, FieldConfig>(MyPanel)
+  .setPanelOptions((builder) => {
+    return builder
+      .addTextInput({
+        path: 'title',
+        name: 'Title',
+        description: 'Title to display',
+        defaultValue: 'My Panel',
+      })
+      .addBooleanSwitch({
+        path: 'showLegend',
+        name: 'Show legend',
+        defaultValue: true,
+      });
+  })
+  .useFieldConfig({
+    useCustomConfig: (builder) => {
+      return builder
+        .addColorPicker({
+          path: 'color',
+          name: 'Color',
+          defaultValue: 'green',
+        });
+    },
+  });
+```
+
+### Panel Component
+
+The main visualization component receives props with data and options:
+
+```typescript
+import React from 'react';
+import { PanelProps } from '@grafana/data';
+import { useTheme2 } from '@grafana/ui';
+import { Options, FieldConfig } from '../types';
+
+export const MyPanel: React.FC<PanelProps<Options>> = ({ 
+  options, 
+  data, 
+  width, 
+  height,
+  fieldConfig,
+  timeRange,
+  timeZone,
+  onChangeTimeRange
+}) => {
+  const theme = useTheme2();
+
+  // Access panel options
+  const { title, showLegend } = options;
+
+  // Access data frames
+  const frame = data.series[0];
+  if (!frame) {
+    return <div>No data</div>;
+  }
+
+  return (
+    <div style={{ width, height }}>
+      <h3>{title}</h3>
+      {/* Render visualization */}
+    </div>
+  );
+};
+```
+
+## Type Definitions
+
+Define types for panel options and field config:
+
+```typescript
+// types.ts
+export interface Options {
+  title: string;
+  showLegend: boolean;
+  colorMode: 'value' | 'background';
+}
+
+export interface FieldConfig {
+  color?: string;
+  lineWidth?: number;
+}
+```
+
+## Panel Options
+
+Panel options are configured using the options builder:
+
+```typescript
+import { PanelOptionsEditorBuilder } from '@grafana/data';
+
+.setPanelOptions((builder: PanelOptionsEditorBuilder<Options>) => {
+  return builder
+    // Text input
+    .addTextInput({
+      path: 'title',
+      name: 'Title',
+      description: 'Panel title',
+      defaultValue: '',
+    })
+    // Number input
+    .addNumberInput({
+      path: 'maxValue',
+      name: 'Max value',
+      settings: {
+        min: 0,
+        max: 100,
+      },
+      defaultValue: 100,
+    })
+    // Select
+    .addSelect({
+      path: 'colorMode',
+      name: 'Color mode',
+      settings: {
+        options: [
+          { value: 'value', label: 'Value' },
+          { value: 'background', label: 'Background' },
+        ],
+      },
+      defaultValue: 'value',
+    })
+    // Radio buttons
+    .addRadio({
+      path: 'layout',
+      name: 'Layout',
+      settings: {
+        options: [
+          { value: 'horizontal', label: 'Horizontal' },
+          { value: 'vertical', label: 'Vertical' },
+        ],
+      },
+      defaultValue: 'horizontal',
+    })
+    // Boolean switch
+    .addBooleanSwitch({
+      path: 'showValues',
+      name: 'Show values',
+      defaultValue: true,
+    })
+    // Color picker
+    .addColorPicker({
+      path: 'backgroundColor',
+      name: 'Background color',
+      defaultValue: 'rgba(128, 128, 128, 0.1)',
+    })
+    // Nested options
+    .addNestedOptions({
+      path: 'legend',
+      category: ['Legend'],
+      build: (builder) => {
+        return builder
+          .addBooleanSwitch({
+            path: 'show',
+            name: 'Show legend',
+            defaultValue: true,
+          })
+          .addRadio({
+            path: 'placement',
+            name: 'Placement',
+            settings: {
+              options: [
+                { value: 'bottom', label: 'Bottom' },
+                { value: 'right', label: 'Right' },
+              ],
+            },
+            defaultValue: 'bottom',
+          });
+      },
+    });
+})
+```
+
+## Field Configuration
+
+Field config allows per-field customization:
+
+```typescript
+.useFieldConfig({
+  // Standard field config options
+  standardOptions: {
+    [FieldConfigProperty.Unit]: {
+      defaultValue: 'short',
+    },
+    [FieldConfigProperty.Decimals]: {
+      defaultValue: 2,
+    },
+    [FieldConfigProperty.Color]: {
+      settings: {
+        byValueSupport: true,
+      },
+    },
+  },
+  // Custom field config options
+  useCustomConfig: (builder) => {
+    return builder
+      .addNumberInput({
+        path: 'lineWidth',
+        name: 'Line width',
+        description: 'Width of the line',
+        settings: {
+          min: 1,
+          max: 10,
+        },
+        defaultValue: 2,
+      })
+      .addSelect({
+        path: 'fillStyle',
+        name: 'Fill style',
+        settings: {
+          options: [
+            { value: 'solid', label: 'Solid' },
+            { value: 'gradient', label: 'Gradient' },
+          ],
+        },
+        defaultValue: 'solid',
+      });
+  },
+})
+```
+
+## Working with Data
+
+### Accessing Data Frames
+
+Data is provided as data frames:
+
+```typescript
+export const MyPanel: React.FC<PanelProps<Options>> = ({ data }) => {
+  const frames = data.series;
+  
+  // Get first frame
+  const frame = frames[0];
+  if (!frame || frame.length === 0) {
+    return <div>No data</div>;
+  }
+
+  // Access fields
+  const timeField = frame.fields.find(f => f.type === FieldType.time);
+  const valueField = frame.fields.find(f => f.type === FieldType.number);
+
+  // Access values
+  const values = valueField?.values.toArray() || [];
+
+  return <div>{/* Render data */}</div>;
+};
+```
+
+### Field Display Values
+
+Use field display values for formatted output:
+
+```typescript
+import { getFieldDisplayValues } from '@grafana/data';
+
+const displayValues = getFieldDisplayValues({
+  fieldConfig,
+  reduceOptions: { calcs: ['lastNotNull'] },
+  data: data.series,
+  theme: theme,
+  timeZone,
+});
+
+displayValues.forEach(displayValue => {
+  console.log(displayValue.display.text);  // Formatted text
+  console.log(displayValue.display.numeric); // Numeric value
+  console.log(displayValue.display.color);   // Calculated color
+});
+```
+
+## Styling with Emotion
+
+Use `useStyles2` hook for theming:
+
+```typescript
+import { useStyles2 } from '@grafana/ui';
+import { GrafanaTheme2, css } from '@grafana/data';
+
+const getStyles = (theme: GrafanaTheme2) => {
+  return {
+    wrapper: css`
+      display: flex;
+      padding: ${theme.spacing(2)};
+      background: ${theme.colors.background.primary};
+      border: 1px solid ${theme.colors.border.weak};
+    `,
+    title: css`
+      color: ${theme.colors.text.primary};
+      font-size: ${theme.typography.h3.fontSize};
+    `,
+  };
+};
+
+export const MyPanel: React.FC<PanelProps<Options>> = (props) => {
+  const styles = useStyles2(getStyles);
+
+  return (
+    <div className={styles.wrapper}>
+      <h3 className={styles.title}>{props.options.title}</h3>
+    </div>
+  );
+};
+```
+
+## Real-World Example: Time Series Panel
+
+The Time Series panel (`public/app/plugins/panel/timeseries/`) is a comprehensive example:
+
+### Entry Point
+
+```typescript
+// public/app/plugins/panel/timeseries/module.tsx
+import { PanelPlugin } from '@grafana/data';
+import { TimeSeriesPanel } from './TimeSeriesPanel';
+import { FieldConfig, Options } from './panelcfg.gen';
+import { getGraphFieldConfig } from './config';
+
+export const plugin = new PanelPlugin<Options, FieldConfig>(TimeSeriesPanel)
+  .useFieldConfig(getGraphFieldConfig(defaultGraphConfig))
+  .setPanelOptions((builder) => {
+    commonOptionsBuilder.addTooltipOptions(builder);
+    commonOptionsBuilder.addLegendOptions(builder);
+    addAnnotationOptions(builder);
+  })
+  .setDataSupport({ annotations: true, alertStates: true });
+```
+
+### Plugin Metadata
+
+```json
+// public/app/plugins/panel/timeseries/plugin.json
+{
+  "type": "panel",
+  "name": "Time series",
+  "id": "timeseries",
+  "suggestions": true,
+  "info": {
+    "description": "Time based line, area and bar charts"
+  }
+}
+```
+
+## Advanced Features
+
+### Panel Migrations
+
+Handle option changes between versions:
+
+```typescript
+import { PanelMigrationHandler } from '@grafana/data';
+
+const migrate: PanelMigrationHandler<Options> = (panel) => {
+  // Migrate from old structure
+  if (panel.options.oldOption) {
+    return {
+      ...panel.options,
+      newOption: panel.options.oldOption,
+      oldOption: undefined,
+    };
+  }
+  return panel.options;
+};
+
+export const plugin = new PanelPlugin<Options>(MyPanel)
+  .setMigrationHandler(migrate);
+```
+
+### Suggestions
+
+Provide visualization suggestions:
+
+```typescript
+import { VisualizationSuggestionsBuilder } from '@grafana/data';
+
+const suggestionsSupplier = (builder: VisualizationSuggestionsBuilder) => {
+  return builder
+    .forData({
+      hasNumberField: true,
+      hasTimeField: true,
+    })
+    .suggest({
+      name: 'Time series',
+      description: 'Best for time-based data',
+    });
+};
+
+export const plugin = new PanelPlugin<Options>(MyPanel)
+  .setSuggestionsSupplier(suggestionsSupplier);
+```
+
+### Annotations Support
+
+Enable annotation display:
+
+```typescript
+export const plugin = new PanelPlugin<Options>(MyPanel)
+  .setDataSupport({ 
+    annotations: true,
+    alertStates: true 
+  });
+```
+
+### Event Handling
+
+Handle user interactions:
+
+```typescript
+export const MyPanel: React.FC<PanelProps<Options>> = ({
+  onChangeTimeRange,
+  data,
+}) => {
+  const handleClick = (timestamp: number) => {
+    // Zoom to time range
+    onChangeTimeRange({
+      from: timestamp - 3600000,
+      to: timestamp + 3600000,
+    });
+  };
+
+  return <div onClick={handleClick}>Click to zoom</div>;
+};
+```
+
+## Testing Panel Plugins
+
+### Unit Tests
+
+```typescript
+import { render, screen } from '@testing-library/react';
+import { MyPanel } from './MyPanel';
+import { PanelProps } from '@grafana/data';
+
+describe('MyPanel', () => {
+  it('renders with data', () => {
+    const props: PanelProps<Options> = {
+      data: {
+        series: [/* mock data */],
+        state: LoadingState.Done,
+      },
+      options: { title: 'Test' },
+      // ... other required props
+    };
+
+    render(<MyPanel {...props} />);
+    expect(screen.getByText('Test')).toBeInTheDocument();
+  });
+});
+```
+
+## Plugin.json Configuration
+
+```json
+{
+  "type": "panel",
+  "name": "My Visualization",
+  "id": "myorg-myviz-panel",
+  "skipDataQuery": false,
+  "info": {
+    "description": "Custom visualization panel",
+    "author": {
+      "name": "My Organization",
+      "url": "https://example.com"
+    },
+    "logos": {
+      "small": "img/logo.svg",
+      "large": "img/logo.svg"
+    },
+    "keywords": ["panel", "visualization"]
+  }
+}
+```
+
+### Key Configuration Options
+
+- `skipDataQuery`: Set to `true` if panel doesn't need query data
+- `suggestions`: Enable visualization suggestions
+- `state`: Plugin release state (`alpha`, `beta`, or omit for stable)
+
+## Best Practices
+
+1. **Use Grafana UI components**: Leverage `@grafana/ui` for consistent styling
+2. **Handle empty data**: Always check for missing or empty data
+3. **Responsive design**: Use width/height props for proper sizing
+4. **Theme support**: Use `useTheme2` for light/dark theme compatibility
+5. **Performance**: Memoize expensive calculations with `useMemo`
+6. **Accessibility**: Add proper ARIA labels and keyboard navigation
+7. **Error boundaries**: Handle rendering errors gracefully
+8. **Documentation**: Provide clear option descriptions
+
+## Common Patterns
+
+### Data Transformation
+
+```typescript
+import { transformDataToTimeSeries } from '@grafana/data';
+
+const timeSeries = transformDataToTimeSeries(data.series);
+```
+
+### Color Handling
+
+```typescript
+import { getFieldColorModeForField } from '@grafana/data';
+
+const colorMode = getFieldColorModeForField(field);
+const color = colorMode.getCalculator(field, theme)(value);
+```
+
+### Value Formatting
+
+```typescript
+import { getValueFormat } from '@grafana/data';
+
+const formatter = getValueFormat(field.config.unit || 'short');
+const formatted = formatter(value, field.config.decimals);
+```
+
+## Resources
+
+- [Build a panel plugin tutorial](https://grafana.com/tutorials/build-a-panel-plugin/)
+- [@grafana/ui Storybook](https://developers.grafana.com/ui/)
+- [Panel plugin examples](https://github.com/grafana/grafana-plugin-examples)
+- Source: `packages/grafana-data/src/panel/` and `public/app/plugins/panel/`

@@ -1,0 +1,261 @@
+---
+title: Plugin Development Overview
+description: Learn about Grafana's plugin architecture and how to develop custom plugins
+keywords:
+  - grafana
+  - plugins
+  - development
+  - architecture
+---
+
+# Plugin Development Overview
+
+Grafana's plugin system allows you to extend its functionality by creating custom data sources, visualizations, and applications. This guide provides an overview of the plugin architecture and development workflow.
+
+## Plugin Types
+
+Grafana supports four types of plugins:
+
+- **Data Source Plugins**: Connect to external data sources and query data
+- **Panel Plugins**: Create custom visualizations for displaying data
+- **App Plugins**: Build complete applications within Grafana with custom pages and workflows
+- **Renderer Plugins**: Generate images or PDFs of dashboards (advanced use case)
+
+## Plugin Architecture
+
+### Frontend Architecture
+
+Frontend plugins are built using TypeScript and React. All plugins extend the base `GrafanaPlugin` class from `@grafana/data`:
+
+```typescript
+import { GrafanaPlugin } from '@grafana/data';
+
+export class MyPlugin extends GrafanaPlugin<PluginMeta> {
+  // Plugin implementation
+}
+```
+
+#### Core Packages
+
+- `@grafana/data`: Data structures, types, and base plugin classes
+- `@grafana/ui`: Reusable UI components following Grafana's design system
+- `@grafana/runtime`: Runtime services (data fetching, location, config)
+- `@grafana/schema`: CUE-generated TypeScript types for dashboards and panels
+
+### Backend Architecture
+
+Backend plugins are written in Go and communicate with Grafana using the [Grafana Plugin SDK for Go](https://github.com/grafana/grafana-plugin-sdk-go). The backend plugin system is located in `pkg/plugins/`.
+
+#### Plugin Discovery and Loading
+
+The plugin loader (`pkg/plugins/manager/loader/`) follows a pipeline architecture:
+
+1. **Discovery**: Finds plugin bundles from various sources
+2. **Bootstrap**: Reads `plugin.json` and creates plugin objects
+3. **Validation**: Verifies plugin signatures and dependencies
+4. **Initialization**: Starts backend processes and registers handlers
+5. **Termination**: Gracefully shuts down plugins
+
+#### Plugin Lifecycle
+
+Backend plugins implement the `backendplugin.Plugin` interface (`pkg/plugins/backendplugin/ifaces.go`):
+
+```go
+type Plugin interface {
+    PluginID() string
+    Start(ctx context.Context) error
+    Stop(ctx context.Context) error
+    IsManaged() bool
+    backend.QueryDataHandler
+    backend.CheckHealthHandler
+    backend.CallResourceHandler
+    // Additional handlers...
+}
+```
+
+## Plugin Metadata
+
+Every plugin requires a `plugin.json` file that defines its metadata and capabilities:
+
+```json
+{
+  "type": "datasource",
+  "name": "My Data Source",
+  "id": "myorg-datasource",
+  "info": {
+    "description": "Connect to my custom data source",
+    "author": {
+      "name": "My Company",
+      "url": "https://example.com"
+    },
+    "logos": {
+      "small": "img/logo.svg",
+      "large": "img/logo.svg"
+    }
+  },
+  "backend": true,
+  "executable": "gpx_my_datasource",
+  "routes": [],
+  "dependencies": {
+    "grafanaVersion": ">=9.0.0",
+    "plugins": []
+  }
+}
+```
+
+### Key Metadata Fields
+
+- `type`: Plugin type (`datasource`, `panel`, `app`, `renderer`)
+- `id`: Unique identifier (convention: `orgname-pluginname-type`)
+- `name`: Display name shown in Grafana UI
+- `backend`: Whether the plugin has a backend component
+- `executable`: Name of the backend binary (for backend plugins)
+- `dependencies`: Required Grafana version and plugin dependencies
+- `routes`: HTTP routes for proxying requests to external APIs
+- `includes`: Dashboards, pages, or other resources bundled with the plugin
+
+## Plugin Classes
+
+Plugins are classified into two classes:
+
+- **Core Plugins** (`ClassCore`): Built-in plugins shipped with Grafana (e.g., Prometheus, Loki, Time Series panel)
+- **External Plugins** (`ClassExternal`): Third-party or custom plugins installed separately
+
+Core plugins are located in:
+- Frontend: `public/app/plugins/`
+- Backend: Various locations depending on the plugin
+
+## Plugin Signatures
+
+Grafana enforces plugin signatures to ensure security and integrity. Signature statuses:
+
+- `internal`: Core plugin, no signature required
+- `valid`: Properly signed with valid signature
+- `invalid`: Signature verification failed
+- `modified`: Valid signature but content has been modified
+- `unsigned`: No signature file present
+
+Signature types indicate the trust level:
+- `grafana`: Official Grafana Labs plugins
+- `commercial`: Commercial plugins
+- `community`: Community plugins
+- `private`: Private plugins for internal use
+
+## Development Workflow
+
+### Prerequisites
+
+- **Node.js 24.x** (see `.nvmrc` for exact version)
+- **Go 1.25.7** (for backend plugins)
+- **Yarn 4.11.0** (via corepack)
+- Grafana development environment
+
+### Project Structure
+
+Typical plugin structure:
+
+```
+my-plugin/
+├── src/
+│   ├── module.ts          # Plugin entry point
+│   ├── components/        # React components
+│   ├── types.ts           # TypeScript types
+│   └── img/               # Images and assets
+├── pkg/                   # Backend code (Go)
+│   ├── main.go
+│   └── plugin/
+├── plugin.json            # Plugin metadata
+├── package.json           # npm dependencies
+├── go.mod                 # Go dependencies
+└── README.md
+```
+
+### Building Plugins
+
+For **frontend** plugins:
+```bash
+yarn install
+yarn build
+```
+
+For **backend** plugins:
+```bash
+mage -v build:linux      # Build for Linux
+mage -v build:darwin     # Build for macOS
+mage -v build:windows    # Build for Windows
+```
+
+### Testing
+
+Run the plugin in a local Grafana instance:
+
+```bash
+# In Grafana repository
+make run                 # Start Grafana backend
+yarn start               # Start frontend dev server
+```
+
+Add your plugin to Grafana's plugin directory or use symlinks during development.
+
+## Plugin Extensions
+
+Grafana supports plugin extensions that allow plugins to extend functionality of other plugins:
+
+- **Extension Points**: Places where plugins can be extended
+- **Added Links**: Links added to other plugins' UIs
+- **Added Components**: React components added to other plugins
+- **Exposed Components**: Components that other plugins can use
+
+Extensions are defined in `plugin.json`:
+
+```json
+{
+  "extensions": {
+    "addedLinks": [
+      {
+        "targets": ["grafana/dashboard/panel/menu"],
+        "title": "Open in My App",
+        "description": "Open this panel in my custom application"
+      }
+    ],
+    "exposedComponents": [
+      {
+        "id": "myorg/custom-component",
+        "title": "Custom Component",
+        "description": "A reusable component for other plugins"
+      }
+    ]
+  }
+}
+```
+
+## Plugin Communication
+
+### Frontend to Backend
+
+Frontend plugins communicate with their backend via:
+
+1. **Query Handlers**: For data queries (`QueryDataHandler`)
+2. **Resource Handlers**: For custom HTTP endpoints (`CallResourceHandler`)
+3. **Health Checks**: For verifying connectivity (`CheckHealthHandler`)
+
+### Backend to External Services
+
+Backend plugins can:
+- Make HTTP requests to external APIs
+- Use plugin routes for authentication and proxying
+- Store credentials securely in encrypted form
+
+## Next Steps
+
+- [Data Source Plugin Development](./datasource-plugins.mdx)
+- [Panel Plugin Development](./panel-plugins.mdx)
+- [App Plugin Development](./app-plugins.mdx)
+- [Publishing Your Plugin](./publishing.mdx)
+
+## Resources
+
+- [Grafana Plugin Tools](https://github.com/grafana/plugin-tools)
+- [Grafana Plugin SDK for Go](https://github.com/grafana/grafana-plugin-sdk-go)
+- [Plugin Examples](https://github.com/grafana/grafana-plugin-examples)
+- [Plugin Tutorial](https://grafana.com/tutorials/build-a-data-source-plugin/)

@@ -1,0 +1,446 @@
+---
+title: Organizations API
+description: Manage organizations and organization membership
+---
+
+# Organizations API
+
+The Organizations API provides endpoints for managing Grafana organizations and their members.
+
+## Get Current Organization
+
+Get the current organization for the authenticated user.
+
+<CodeGroup>
+```bash cURL
+curl -X GET http://localhost:3000/api/org \
+  -u admin:admin
+```
+
+```json Response
+{
+  "id": 1,
+  "name": "Main Org.",
+  "address": {
+    "address1": "123 Main St",
+    "address2": "Suite 100",
+    "city": "San Francisco",
+    "zipCode": "94101",
+    "state": "CA",
+    "country": "USA"
+  }
+}
+```
+</CodeGroup>
+
+<ResponseField name="id" type="integer">
+  Organization ID
+</ResponseField>
+
+<ResponseField name="name" type="string">
+  Organization name
+</ResponseField>
+
+<ResponseField name="address" type="object">
+  Organization address information
+  
+  <ResponseField name="address.address1" type="string">
+    Address line 1
+  </ResponseField>
+  
+  <ResponseField name="address.city" type="string">
+    City
+  </ResponseField>
+  
+  <ResponseField name="address.state" type="string">
+    State or province
+  </ResponseField>
+  
+  <ResponseField name="address.country" type="string">
+    Country
+  </ResponseField>
+</ResponseField>
+
+## Get Organization by ID
+
+Retrieve an organization by its ID.
+
+<CodeGroup>
+```bash cURL
+curl -X GET http://localhost:3000/api/orgs/1 \
+  -u admin:admin
+```
+
+```json Response
+{
+  "id": 1,
+  "name": "Main Org.",
+  "address": {
+    "address1": "123 Main St",
+    "city": "San Francisco",
+    "zipCode": "94101",
+    "state": "CA",
+    "country": "USA"
+  }
+}
+```
+</CodeGroup>
+
+<ParamField path="org_id" type="integer" required>
+  Organization ID
+</ParamField>
+
+## Get Organization by Name
+
+Retrieve an organization by its name.
+
+<CodeGroup>
+```bash cURL
+curl -X GET http://localhost:3000/api/orgs/name/Main%20Org. \
+  -u admin:admin
+```
+
+```json Response
+{
+  "id": 1,
+  "name": "Main Org.",
+  "address": {
+    "address1": "123 Main St",
+    "city": "San Francisco"
+  }
+}
+```
+</CodeGroup>
+
+<ParamField path="org_name" type="string" required>
+  Organization name (URL encoded)
+</ParamField>
+
+## Create Organization
+
+Create a new organization. Only works if `users.allow_org_create` is enabled in Grafana configuration.
+
+<CodeGroup>
+```bash cURL
+curl -X POST http://localhost:3000/api/orgs \
+  -u admin:admin \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "New Organization"
+  }'
+```
+
+```json Response
+{
+  "orgId": 2,
+  "message": "Organization created"
+}
+```
+</CodeGroup>
+
+<ParamField body="name" type="string" required>
+  Organization name
+</ParamField>
+
+<ResponseField name="orgId" type="integer">
+  ID of the newly created organization
+</ResponseField>
+
+<ResponseField name="message" type="string">
+  Confirmation message
+</ResponseField>
+
+## Update Current Organization
+
+Update the current organization's name.
+
+<CodeGroup>
+```bash cURL
+curl -X PUT http://localhost:3000/api/org \
+  -u admin:admin \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "Updated Org Name"
+  }'
+```
+
+```json Response
+{
+  "message": "Organization updated"
+}
+```
+</CodeGroup>
+
+<ParamField body="name" type="string" required>
+  New organization name
+</ParamField>
+
+## Update Organization
+
+Update an organization by ID.
+
+<CodeGroup>
+```bash cURL
+curl -X PUT http://localhost:3000/api/orgs/1 \
+  -u admin:admin \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "Updated Org Name"
+  }'
+```
+
+```json Response
+{
+  "message": "Organization updated"
+}
+```
+</CodeGroup>
+
+<ParamField path="org_id" type="integer" required>
+  Organization ID
+</ParamField>
+
+<ParamField body="name" type="string" required>
+  New organization name
+</ParamField>
+
+## Update Organization Address
+
+Update the address for an organization.
+
+<CodeGroup>
+```bash cURL
+curl -X PUT http://localhost:3000/api/org/address \
+  -u admin:admin \
+  -H "Content-Type: application/json" \
+  -d '{
+    "address1": "456 New St",
+    "address2": "Floor 3",
+    "city": "New York",
+    "zipCode": "10001",
+    "state": "NY",
+    "country": "USA"
+  }'
+```
+
+```json Response
+{
+  "message": "Address updated"
+}
+```
+</CodeGroup>
+
+<ParamField body="address1" type="string">
+  Address line 1
+</ParamField>
+
+<ParamField body="address2" type="string">
+  Address line 2
+</ParamField>
+
+<ParamField body="city" type="string">
+  City
+</ParamField>
+
+<ParamField body="zipCode" type="string">
+  ZIP or postal code
+</ParamField>
+
+<ParamField body="state" type="string">
+  State or province
+</ParamField>
+
+<ParamField body="country" type="string">
+  Country
+</ParamField>
+
+## Delete Organization
+
+Delete an organization by ID.
+
+<CodeGroup>
+```bash cURL
+curl -X DELETE http://localhost:3000/api/orgs/2 \
+  -u admin:admin
+```
+
+```json Response
+{
+  "message": "Organization deleted"
+}
+```
+</CodeGroup>
+
+<ParamField path="org_id" type="integer" required>
+  Organization ID
+</ParamField>
+
+<Warning>
+  You cannot delete your currently active organization. Switch to a different organization first.
+</Warning>
+
+## Search Organizations
+
+Search all organizations.
+
+<CodeGroup>
+```bash cURL
+curl -X GET "http://localhost:3000/api/orgs?perpage=10&page=1&query=Main" \
+  -u admin:admin
+```
+
+```json Response
+[
+  {
+    "id": 1,
+    "name": "Main Org."
+  }
+]
+```
+</CodeGroup>
+
+<ParamField query="perpage" type="integer" default="1000">
+  Number of organizations per page
+</ParamField>
+
+<ParamField query="page" type="integer" default="1">
+  Page number
+</ParamField>
+
+<ParamField query="query" type="string">
+  Search query (searches organization name)
+</ParamField>
+
+<ParamField query="name" type="string">
+  Filter by exact organization name
+</ParamField>
+
+## Get Organization Users
+
+Get all users in the current organization.
+
+<CodeGroup>
+```bash cURL
+curl -X GET http://localhost:3000/api/org/users \
+  -u admin:admin
+```
+
+```json Response
+[
+  {
+    "orgId": 1,
+    "userId": 1,
+    "email": "admin@localhost",
+    "login": "admin",
+    "role": "Admin",
+    "avatarUrl": "/avatar/abc123"
+  }
+]
+```
+</CodeGroup>
+
+<ResponseField name="userId" type="integer">
+  User ID
+</ResponseField>
+
+<ResponseField name="email" type="string">
+  User email
+</ResponseField>
+
+<ResponseField name="login" type="string">
+  Username
+</ResponseField>
+
+<ResponseField name="role" type="string">
+  Organization role: "Admin", "Editor", or "Viewer"
+</ResponseField>
+
+## Add User to Organization
+
+Add a user to the current organization.
+
+<CodeGroup>
+```bash cURL
+curl -X POST http://localhost:3000/api/org/users \
+  -u admin:admin \
+  -H "Content-Type: application/json" \
+  -d '{
+    "loginOrEmail": "user@example.com",
+    "role": "Editor"
+  }'
+```
+
+```json Response
+{
+  "message": "User added to organization"
+}
+```
+</CodeGroup>
+
+<ParamField body="loginOrEmail" type="string" required>
+  Username or email of the user to add
+</ParamField>
+
+<ParamField body="role" type="string" required>
+  Role to assign: "Admin", "Editor", or "Viewer"
+</ParamField>
+
+## Update User in Organization
+
+Update a user's role in the current organization.
+
+<CodeGroup>
+```bash cURL
+curl -X PATCH http://localhost:3000/api/org/users/2 \
+  -u admin:admin \
+  -H "Content-Type: application/json" \
+  -d '{
+    "role": "Admin"
+  }'
+```
+
+```json Response
+{
+  "message": "Organization user updated"
+}
+```
+</CodeGroup>
+
+<ParamField path="userId" type="integer" required>
+  User ID
+</ParamField>
+
+<ParamField body="role" type="string" required>
+  New role: "Admin", "Editor", or "Viewer"
+</ParamField>
+
+## Remove User from Organization
+
+Remove a user from the current organization.
+
+<CodeGroup>
+```bash cURL
+curl -X DELETE http://localhost:3000/api/org/users/2 \
+  -u admin:admin
+```
+
+```json Response
+{
+  "message": "User removed from organization"
+}
+```
+</CodeGroup>
+
+<ParamField path="userId" type="integer" required>
+  User ID to remove
+</ParamField>
+
+## Permissions
+
+If you are running Grafana Enterprise with Fine-grained access control enabled:
+
+- **Read organization**: Requires `orgs:read` permission
+- **Create organization**: Requires `orgs:create` permission
+- **Update organization**: Requires `orgs:write` permission
+- **Delete organization**: Requires `orgs:delete` permission
+- **Manage org users**: Requires `org.users:add`, `org.users:write`, or `org.users:remove` permissions

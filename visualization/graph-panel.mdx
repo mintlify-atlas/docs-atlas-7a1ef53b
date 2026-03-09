@@ -1,0 +1,303 @@
+---
+title: Graph Panel (Time Series)
+description: Display time series data with lines, bars, and points
+---
+
+The Time Series panel (formerly Graph panel) visualizes time series data with support for multiple draw styles, stacking, and rich field configuration options.
+
+## Overview
+
+The Time Series panel is the primary visualization for displaying metrics over time. It supports:
+
+- Multiple draw styles (lines, bars, points)
+- Stacking and grouping
+- Dual Y-axes
+- Annotations and exemplars
+- Interactive tooltips and legends
+
+## Panel Options
+
+The Time Series panel is defined in `public/app/plugins/panel/timeseries/module.tsx:15`:
+
+```typescript
+export const plugin = new PanelPlugin<Options, FieldConfig>(TimeSeriesPanel)
+  .setPanelChangeHandler(graphPanelChangedHandler)
+  .useFieldConfig(getGraphFieldConfig(defaultGraphConfig))
+  .setPanelOptions((builder) => {
+    commonOptionsBuilder.addTooltipOptions(builder, false, true, optsWithHideZeros);
+    commonOptionsBuilder.addLegendOptions(builder, true, true);
+    // ... additional options
+  })
+  .setDataSupport({ annotations: true, alertStates: true });
+```
+
+### Tooltip Options
+
+Control how data is displayed on hover:
+
+```typescript
+interface VizTooltipOptions {
+  mode: TooltipDisplayMode; // 'single' | 'multi' | 'none'
+  sort: 'none' | 'asc' | 'desc';
+  hoverProximity?: number;
+}
+```
+
+**Tooltip Modes:**
+
+- `single` - Show only the closest series
+- `multi` - Show all series at the current time
+- `none` - Disable tooltips
+
+### Legend Options
+
+```typescript
+interface VizLegendOptions {
+  displayMode: 'list' | 'table' | 'hidden';
+  placement: 'bottom' | 'right' | 'top';
+  showLegend: boolean;
+  calcs: string[]; // Stats to display (e.g., 'mean', 'last', 'max')
+  width?: number;
+}
+```
+
+### Time Zone
+
+Configure the display time zone:
+
+```typescript
+interface OptionsWithTimezones {
+  timezone?: string[]; // e.g., ['browser', 'America/New_York']
+}
+```
+
+## Field Configuration
+
+Field config options are defined in `public/app/plugins/panel/timeseries/config.ts:97`.
+
+### Graph Styles
+
+#### Draw Style
+
+Choose how the data is rendered:
+
+```typescript
+enum GraphDrawStyle {
+  Line = 'line',
+  Bars = 'bars',
+  Points = 'points'
+}
+```
+
+Default configuration from `public/app/plugins/panel/timeseries/config.ts:29`:
+
+```typescript
+const defaultGraphConfig: GraphFieldConfig = {
+  drawStyle: GraphDrawStyle.Line,
+  lineInterpolation: LineInterpolation.Linear,
+  lineWidth: 1,
+  fillOpacity: 0,
+  gradientMode: GraphGradientMode.None,
+  barAlignment: BarAlignment.Center,
+  barWidthFactor: 0.6,
+  stacking: {
+    mode: StackingMode.None,
+    group: 'A',
+  },
+};
+```
+
+#### Line Interpolation
+
+Control how points are connected:
+
+```typescript
+enum LineInterpolation {
+  Linear = 'linear',      // Straight lines
+  Smooth = 'smooth',      // Bezier curves
+  StepBefore = 'stepBefore',
+  StepAfter = 'stepAfter'
+}
+```
+
+#### Gradient Mode
+
+Apply color gradients to the fill:
+
+```typescript
+enum GraphGradientMode {
+  None = 'none',
+  Opacity = 'opacity',    // Fade from color to transparent
+  Hue = 'hue',           // Shift through color spectrum
+  Scheme = 'scheme'      // Use color scheme
+}
+```
+
+### Stacking
+
+Stack multiple series:
+
+```typescript
+interface StackingConfig {
+  mode: StackingMode; // 'none' | 'normal' | 'percent'
+  group: string;      // Stack group identifier
+}
+```
+
+### Points
+
+Configure point display:
+
+```typescript
+interface GraphFieldConfig {
+  showPoints?: VisibilityMode; // 'auto' | 'always' | 'never'
+  pointSize?: number;          // 1-40
+  pointSymbol?: string;        // Point shape
+  showValues?: boolean;        // Display values on points
+}
+```
+
+### Axis Configuration
+
+Configure Y-axis display:
+
+```typescript
+interface GraphFieldConfig {
+  axisPlacement?: 'auto' | 'left' | 'right' | 'hidden';
+  axisLabel?: string;
+  axisWidth?: number;
+  axisSoftMin?: number;
+  axisSoftMax?: number;
+  axisCenteredZero?: boolean;
+  axisGridShow?: boolean;
+  axisBorderShow?: boolean;
+}
+```
+
+### Null Value Handling
+
+Control how gaps in data are displayed:
+
+```typescript
+interface GraphFieldConfig {
+  spanNulls?: boolean | number; // Connect across nulls (true/false or threshold)
+  insertNulls?: number;         // Insert nulls after time threshold (ms)
+}
+```
+
+### Thresholds
+
+Display threshold lines or areas:
+
+```typescript
+interface GraphThresholdsStyleConfig {
+  mode: GraphThresholdsStyleMode; // 'off' | 'line' | 'area' | 'line+area'
+}
+```
+
+## Panel JSON Example
+
+```json
+{
+  "type": "timeseries",
+  "title": "CPU Usage",
+  "gridPos": { "x": 0, "y": 0, "w": 12, "h": 8 },
+  "targets": [
+    {
+      "datasource": { "type": "prometheus" },
+      "expr": "rate(cpu_usage_seconds_total[5m])"
+    }
+  ],
+  "options": {
+    "tooltip": {
+      "mode": "multi",
+      "sort": "desc"
+    },
+    "legend": {
+      "displayMode": "table",
+      "placement": "bottom",
+      "showLegend": true,
+      "calcs": ["mean", "last", "max"]
+    }
+  },
+  "fieldConfig": {
+    "defaults": {
+      "custom": {
+        "drawStyle": "line",
+        "lineInterpolation": "smooth",
+        "lineWidth": 2,
+        "fillOpacity": 10,
+        "gradientMode": "opacity",
+        "showPoints": "never",
+        "stacking": {
+          "mode": "normal",
+          "group": "A"
+        }
+      },
+      "unit": "percentunit",
+      "min": 0,
+      "max": 1
+    },
+    "overrides": []
+  }
+}
+```
+
+## Advanced Features
+
+### Annotations
+
+The Time Series panel supports annotations with the plugin configured at `public/app/plugins/panel/timeseries/module.tsx:33`:
+
+```typescript
+.setDataSupport({ annotations: true, alertStates: true })
+```
+
+Annotations can be displayed as:
+- Vertical lines
+- Regions (time ranges)
+- Points on the graph
+
+### Exemplars
+
+Exemplars are trace samples linked to metrics, displayed as special markers on the graph.
+
+### Transform
+
+Apply transformations to series:
+
+```typescript
+enum GraphTransform {
+  Constant = 'constant',   // Show first value as constant line
+  NegativeY = 'negative-y' // Flip values to negative
+}
+```
+
+## Migration from Old Graph Panel
+
+The Time Series panel includes a migration handler at `public/app/plugins/panel/timeseries/migrations.ts` that automatically converts old graph panel configurations.
+
+<Warning>
+The old Graph panel is deprecated. All new dashboards should use the Time Series panel.
+</Warning>
+
+## Implementation Details
+
+The Time Series panel uses the `TimeSeries` component from `app/core/components/TimeSeries/` which renders using the uPlot charting library for high-performance rendering.
+
+Key files:
+- `public/app/plugins/panel/timeseries/module.tsx` - Plugin definition
+- `public/app/plugins/panel/timeseries/TimeSeriesPanel.tsx` - Component implementation
+- `public/app/plugins/panel/timeseries/config.ts` - Field configuration
+- `public/app/plugins/panel/timeseries/panelcfg.gen.ts` - Generated types
+
+## Related Resources
+
+<CardGroup cols={2}>
+  <Card title="Table Panel" icon="table" href="/visualization/table-panel">
+    Display data in tabular format
+  </Card>
+  <Card title="Stat Panel" icon="gauge" href="/visualization/stat-panel">
+    Show single statistical values
+  </Card>
+</CardGroup>

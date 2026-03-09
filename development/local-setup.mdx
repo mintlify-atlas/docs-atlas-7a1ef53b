@@ -1,0 +1,265 @@
+---
+title: Local Setup
+description: Install dependencies and configure your Grafana development environment
+---
+
+This guide walks you through setting up a local development environment for Grafana.
+
+## Prerequisites
+
+Ensure you have the following installed:
+
+### Required Dependencies
+
+- **Git**: For cloning the repository
+- **Go**: See [go.mod](https://github.com/grafana/grafana/blob/main/go.mod#L3) for the minimum required version (currently 1.25.8)
+- **Node.js (LTS)**: Version 24.x with corepack enabled (see [.nvmrc](https://github.com/grafana/grafana/blob/main/.nvmrc))
+  - We recommend using a version manager like [nvm](https://github.com/nvm-sh/nvm) or [fnm](https://github.com/Schniz/fnm)
+- **GCC** (optional): Enables CGO for smaller, dynamically-linked binaries with SQLite support
+
+### Platform-Specific Instructions
+
+<Tabs>
+  <Tab title="macOS">
+    Install dependencies using [Homebrew](https://brew.sh/):
+
+    ```bash
+    brew install git
+    brew install go
+    brew install node@24
+    ```
+  </Tab>
+  <Tab title="Windows">
+    We recommend using Windows Subsystem for Linux (WSL) for development on Windows.
+
+    Follow the [Grafana setup guide for Windows](https://grafana.com/blog/2021/03/03/how-to-set-up-a-grafana-development-environment-on-a-windows-pc-using-wsl/).
+
+    If building natively on Windows:
+    - Install GCC with binutils 2.37+ (e.g., [MinGW x64](https://www.mingw-w64.org/downloads/))
+    - Install [Make for Windows](http://gnuwin32.sourceforge.net/packages/make.htm) to use Makefile commands
+  </Tab>
+  <Tab title="Linux">
+    Use your distribution's package manager to install Git, Go, and Node.js.
+
+    Example for Ubuntu/Debian:
+    ```bash
+    sudo apt update
+    sudo apt install git golang nodejs
+    ```
+  </Tab>
+</Tabs>
+
+## Clone the Repository
+
+<Steps>
+  <Step title="Clone the repository">
+    ```bash
+    git clone https://github.com/grafana/grafana.git
+    cd grafana
+    ```
+
+    <Warning>
+      Do NOT use `go get` to download Grafana. Recent versions of Go have behavior that isn't compatible with how the Grafana repository is structured.
+    </Warning>
+  </Step>
+
+  <Step title="Enable and install Yarn via corepack">
+    Grafana uses Yarn 4.11.0 for frontend dependency management:
+
+    ```bash
+    corepack enable
+    corepack install
+    ```
+  </Step>
+
+  <Step title="Install frontend dependencies">
+    ```bash
+    yarn install --immutable
+    ```
+
+    <Accordion title="Troubleshooting: Checksum mismatch errors">
+      If you get an error about remote archive checksum mismatch:
+
+      ```bash
+      YARN_CHECKSUM_BEHAVIOR=update yarn install --immutable
+      ```
+    </Accordion>
+  </Step>
+</Steps>
+
+## Configure Pre-commit Hooks (Optional)
+
+Pre-commit hooks lint, fix, and format code as you commit. They're opt-in for contributors.
+
+<CodeGroup>
+```bash Install hooks
+make lefthook-install
+```
+
+```bash Remove hooks
+make lefthook-uninstall
+```
+</CodeGroup>
+
+<Info>
+  We strongly encourage frontend contributors to install pre-commit hooks to keep `eslint-suppressions.json` in sync, even if your IDE formats on save.
+</Info>
+
+## Configure Development Environment
+
+### Create Custom Configuration
+
+The default configuration is in `conf/defaults.ini`. To override settings:
+
+<Steps>
+  <Step title="Create custom.ini">
+    ```bash
+    touch conf/custom.ini
+    ```
+  </Step>
+
+  <Step title="Enable development mode">
+    Add this to `conf/custom.ini`:
+
+    ```ini
+    app_mode = development
+    ```
+  </Step>
+
+  <Step title="Add any other overrides (optional)">
+    You only need to add settings you want to override from `defaults.ini`.
+  </Step>
+</Steps>
+
+## Set Up Data Sources (Optional)
+
+To test with real data sources during development:
+
+<Steps>
+  <Step title="Install Docker">
+    Grafana uses [Docker](https://docker.com) to run databases in the background.
+
+    [Install Docker](https://docs.docker.com/get-docker/) before proceeding.
+  </Step>
+
+  <Step title="Start data source containers">
+    From the repository root:
+
+    ```bash
+    make devenv sources=influxdb,loki
+    ```
+
+    This generates a Docker Compose file with your specified data sources and runs them.
+
+    <Accordion title="Available data sources">
+      See the [devenv/docker/blocks](https://github.com/grafana/grafana/tree/main/devenv/docker/blocks) directory for all available sources.
+
+      Some have macOS-specific images (e.g., `nginx_proxy_mac`).
+    </Accordion>
+  </Step>
+
+  <Step title="Set up dashboards and data sources">
+    ```bash
+    cd devenv
+    ./setup.sh
+    ```
+
+    This creates:
+    - Data sources named `gdev-<type>`
+    - Dashboards in the "gdev dashboards" folder
+  </Step>
+
+  <Step title="Stop data sources when done">
+    ```bash
+    make devenv-down
+    ```
+  </Step>
+</Steps>
+
+## Troubleshooting
+
+### Too Many Open Files (macOS/Linux)
+
+If you encounter "too many open files" errors:
+
+<Steps>
+  <Step title="Check current limit">
+    ```bash
+    ulimit -a
+    ```
+  </Step>
+
+  <Step title="Increase the limit">
+    ```bash
+    ulimit -S -n 8000
+    ```
+
+    To determine the number needed:
+    ```bash
+    find ./conf ./pkg ./public/views | wc -l
+    ```
+  </Step>
+
+  <Step title="Make it permanent">
+    Add to your shell initialization file (`~/.zshrc` or `~/.bashrc`):
+
+    ```bash
+    echo "ulimit -S -n 8000" >> ~/.zshrc
+    ```
+  </Step>
+</Steps>
+
+### File Watchers Limit (Linux)
+
+If you see "System limit for number of file watchers reached":
+
+```bash
+echo fs.inotify.max_user_watches=524288 | sudo tee -a /etc/sysctl.conf
+sudo sysctl -p
+```
+
+Verify:
+```bash
+cat /proc/sys/fs/inotify/max_user_watches
+```
+
+### File Watchers Limit (macOS)
+
+```bash
+sudo sysctl -w kern.maxfiles=524288
+```
+
+Verify:
+```bash
+sysctl kern.maxfiles
+```
+
+### JavaScript Heap Out of Memory
+
+If Node.js runs out of memory:
+
+```bash
+export NODE_OPTIONS="--max-old-space-size=8192"
+```
+
+On Windows:
+```cmd
+Set NODE_OPTIONS="--max-old-space-size=8192"
+```
+
+### IDE Configuration
+
+Configure your IDE to use the TypeScript version from `node_modules/.bin/tsc` (should match `package.json`).
+
+Grafana previously used Yarn PnP, but now uses standard `node_modules`. If you have custom ESLint, Prettier, or TypeScript paths configured, you can remove them.
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Project Structure" icon="folder-tree" href="/development/project-structure">
+    Learn how the monorepo is organized
+  </Card>
+  <Card title="Building" icon="hammer" href="/development/building">
+    Build and run Grafana locally
+  </Card>
+</CardGroup>

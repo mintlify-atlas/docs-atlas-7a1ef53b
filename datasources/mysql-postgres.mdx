@@ -1,0 +1,598 @@
+---
+title: MySQL and PostgreSQL Data Sources
+description: Query relational databases in Grafana using SQL
+---
+
+# MySQL and PostgreSQL Data Sources
+
+Grafana provides native support for querying MySQL and PostgreSQL relational databases. Both data sources share similar features and SQL query capabilities.
+
+## Overview
+
+The MySQL and PostgreSQL data sources support:
+- Standard SQL queries for time series and table data
+- SQL query builder and code editor
+- Macros for time-based filtering and grouping
+- Template variables from query results
+- Multi-value variables
+
+<Info>
+Source: `public/app/plugins/datasource/mysql/` and `public/app/plugins/datasource/grafana-postgresql-datasource/`
+</Info>
+
+## Configuration
+
+### MySQL Configuration
+
+<Steps>
+  <Step title="Add Data Source">
+    Navigate to **Configuration** > **Data Sources** > **Add data source** > **MySQL**
+  </Step>
+  
+  <Step title="Configure Connection">
+    Set connection parameters:
+    
+    - **Host**: `localhost:3306`
+    - **Database**: `mydatabase`
+    - **User**: Database username
+    - **Password**: Database password
+  </Step>
+  
+  <Step title="Additional Settings">
+    - **Max open connections**: Connection pool size (default: 100)
+    - **Max idle connections**: Idle connection pool size (default: 2)
+    - **Max connection lifetime**: Maximum connection duration (default: 14400s)
+  </Step>
+</Steps>
+
+### PostgreSQL Configuration
+
+<Steps>
+  <Step title="Add Data Source">
+    Navigate to **Configuration** > **Data Sources** > **Add data source** > **PostgreSQL**
+  </Step>
+  
+  <Step title="Configure Connection">
+    Set connection parameters:
+    
+    - **Host**: `localhost:5432`
+    - **Database**: `postgres`
+    - **User**: Database username
+    - **Password**: Database password
+    - **TLS/SSL Mode**: `disable`, `require`, or `verify-full`
+  </Step>
+  
+  <Step title="PostgreSQL Specifics">
+    - **Version**: Select PostgreSQL version for query compatibility
+    - **TimescaleDB**: Enable if using TimescaleDB extension
+  </Step>
+</Steps>
+
+### Connection Settings
+
+<ParamField path="host" type="string" required>
+  Database host and port (e.g., `localhost:3306`, `db.example.com:5432`)
+</ParamField>
+
+<ParamField path="database" type="string" required>
+  Database name to connect to
+</ParamField>
+
+<ParamField path="user" type="string" required>
+  Database username
+</ParamField>
+
+<ParamField path="password" type="string" required>
+  Database password (stored encrypted)
+</ParamField>
+
+<ParamField path="sslmode" type="string">
+  **PostgreSQL only**: SSL mode (`disable`, `require`, `verify-ca`, `verify-full`)
+</ParamField>
+
+<ParamField path="maxOpenConns" type="number" default="100">
+  Maximum number of open connections to the database
+</ParamField>
+
+<ParamField path="maxIdleConns" type="number" default="2">
+  Maximum number of idle connections
+</ParamField>
+
+<ParamField path="connMaxLifetime" type="number" default="14400">
+  Maximum connection lifetime in seconds
+</ParamField>
+
+## Query Requirements
+
+Queries must return specific columns based on visualization type:
+
+### Time Series Queries
+
+<Note>
+Time series queries must return:
+- A column named `time`, `time_sec`, or timestamp column (in UTC)
+- One or more columns with numeric data type as values
+- Optional: A column named `metric` for series names
+</Note>
+
+**Resultsets must be sorted by time.**
+
+<Info>
+Source: `public/app/plugins/datasource/mysql/CheatSheet.tsx:12-28` and `public/app/plugins/datasource/grafana-postgresql-datasource/CheatSheet.tsx:12-27`
+</Info>
+
+### Table Queries
+
+Table queries can return any set of columns. Grafana displays them in a table panel.
+
+## SQL Macros
+
+Grafana provides macros to simplify time-based queries:
+
+### MySQL Macros
+
+<Accordion title="$__time(column)">
+  Converts a timestamp column to Unix timestamp:
+  
+  ```sql
+  SELECT $__time(created_at), value FROM metrics
+  ```
+  
+  Expands to:
+  ```sql
+  SELECT UNIX_TIMESTAMP(created_at) as time_sec, value FROM metrics
+  ```
+  
+  <Info>Source: `public/app/plugins/datasource/mysql/CheatSheet.tsx:35`</Info>
+</Accordion>
+
+<Accordion title="$__timeEpoch(column)">
+  Same as `$__time()`, returns Unix epoch:
+  
+  ```sql
+  SELECT $__timeEpoch(timestamp) FROM events
+  ```
+  
+  <Info>Source: `public/app/plugins/datasource/mysql/CheatSheet.tsx:36`</Info>
+</Accordion>
+
+<Accordion title="$__timeFilter(column)">
+  Filters by dashboard time range:
+  
+  ```sql
+  SELECT * FROM metrics WHERE $__timeFilter(created_at)
+  ```
+  
+  Expands to:
+  ```sql
+  SELECT * FROM metrics WHERE created_at BETWEEN FROM_UNIXTIME(1492750877) AND FROM_UNIXTIME(1492750877)
+  ```
+  
+  <Info>Source: `public/app/plugins/datasource/mysql/CheatSheet.tsx:37`</Info>
+</Accordion>
+
+<Accordion title="$__unixEpochFilter(column)">
+  Filters Unix epoch timestamps:
+  
+  ```sql
+  WHERE $__unixEpochFilter(time_unix_epoch)
+  ```
+  
+  Expands to:
+  ```sql
+  WHERE time_unix_epoch > 1492750877 AND time_unix_epoch < 1492750877
+  ```
+  
+  <Info>Source: `public/app/plugins/datasource/mysql/CheatSheet.tsx:38`</Info>
+</Accordion>
+
+<Accordion title="$__timeGroup(column, interval, [fillvalue])">
+  Groups time into intervals:
+  
+  ```sql
+  SELECT 
+    $__timeGroup(created_at, '5m'),
+    AVG(value)
+  FROM metrics
+  GROUP BY time
+  ```
+  
+  **MySQL expands to:**
+  ```sql
+  cast(cast(UNIX_TIMESTAMP(created_at)/(300) as signed)*300 as signed)
+  ```
+  
+  Optional `fillvalue` fills missing intervals:
+  - Literal value: `0`, `NULL`
+  - `previous`: Use previous value
+  
+  <Info>Source: `public/app/plugins/datasource/mysql/CheatSheet.tsx:42-47`</Info>
+</Accordion>
+
+<Accordion title="$__timeGroupAlias(column, interval)">
+  Groups time and aliases as `time`:
+  
+  ```sql
+  SELECT 
+    $__timeGroupAlias(created_at, '5m'),
+    AVG(value) as avg_value
+  FROM metrics
+  GROUP BY time
+  ORDER BY time
+  ```
+  
+  <Info>Source: `public/app/plugins/datasource/mysql/CheatSheet.tsx:48-50`</Info>
+</Accordion>
+
+### PostgreSQL Macros
+
+<Accordion title="$__time(column)">
+  Aliases column as `time`:
+  
+  ```sql
+  SELECT $__time(created_at), value FROM metrics
+  ```
+  
+  Expands to:
+  ```sql
+  SELECT created_at as "time", value FROM metrics
+  ```
+  
+  <Info>Source: `public/app/plugins/datasource/grafana-postgresql-datasource/CheatSheet.tsx:34`</Info>
+</Accordion>
+
+<Accordion title="$__timeEpoch(column)">
+  Converts to Unix epoch:
+  
+  ```sql
+  SELECT $__timeEpoch(created_at) FROM events
+  ```
+  
+  Expands to:
+  ```sql
+  SELECT extract(epoch from created_at) as "time" FROM events
+  ```
+  
+  <Info>Source: `public/app/plugins/datasource/grafana-postgresql-datasource/CheatSheet.tsx:35`</Info>
+</Accordion>
+
+<Accordion title="$__timeFilter(column)">
+  Filters by time range:
+  
+  ```sql
+  WHERE $__timeFilter(created_at)
+  ```
+  
+  Expands to:
+  ```sql
+  WHERE created_at BETWEEN '2017-04-21T05:01:17Z' AND '2017-04-21T05:01:17Z'
+  ```
+  
+  <Info>Source: `public/app/plugins/datasource/grafana-postgresql-datasource/CheatSheet.tsx:36-39`</Info>
+</Accordion>
+
+<Accordion title="$__timeGroup(column, interval, [fillvalue])">
+  Groups time into buckets:
+  
+  ```sql
+  SELECT 
+    $__timeGroup(created_at, '5m'),
+    AVG(value)
+  FROM metrics
+  GROUP BY time
+  ```
+  
+  **PostgreSQL expands to:**
+  ```sql
+  (extract(epoch from created_at)/300)::bigint*300
+  ```
+  
+  <Info>Source: `public/app/plugins/datasource/grafana-postgresql-datasource/CheatSheet.tsx:44-48`</Info>
+</Accordion>
+
+<Accordion title="$__timeGroupAlias(column, interval)">
+  Groups and aliases as `time`:
+  
+  ```sql
+  SELECT 
+    $__timeGroupAlias(date_time_col, '1h'),
+    sum(value) as value
+  FROM yourtable
+  GROUP BY time
+  ORDER BY time
+  ```
+  
+  <Info>Source: `public/app/plugins/datasource/grafana-postgresql-datasource/CheatSheet.tsx:56-66`</Info>
+</Accordion>
+
+### Macro Value Functions
+
+Macros that return values for custom conditionals:
+
+**MySQL:**
+
+- `$__timeFrom()` → `FROM_UNIXTIME(1492750877)`
+- `$__timeTo()` → `FROM_UNIXTIME(1492750877)`
+- `$__unixEpochFrom()` → `1492750877`
+- `$__unixEpochTo()` → `1492750877`
+
+<Info>Source: `public/app/plugins/datasource/mysql/CheatSheet.tsx:79-86`</Info>
+
+**PostgreSQL:**
+
+- `$__timeFrom()` → `'2017-04-21T05:01:17Z'`
+- `$__timeTo()` → `'2017-04-21T05:01:17Z'`
+- `$__unixEpochFrom()` → `1492750877`
+- `$__unixEpochTo()` → `1492750877`
+
+<Info>Source: `public/app/plugins/datasource/grafana-postgresql-datasource/CheatSheet.tsx:68-76`</Info>
+
+## Query Examples
+
+### Time Series Example
+
+**MySQL:**
+
+```sql
+SELECT
+  $__timeGroupAlias(time_date_time, '5m'),
+  min(value_double) as value,
+  'min' as metric
+FROM my_data
+WHERE $__timeFilter(time_date_time)
+GROUP BY time
+ORDER BY time
+```
+
+<Info>Source: `public/app/plugins/datasource/mysql/CheatSheet.tsx:56-76`</Info>
+
+**PostgreSQL:**
+
+```sql
+SELECT 
+  $__timeGroup(date_time_col, '1h'),
+  sum(value) as value
+FROM yourtable
+WHERE $__timeFilter(date_time_col)
+GROUP BY time
+ORDER BY time
+```
+
+### Multiple Series
+
+Use the `metric` column to create multiple series:
+
+```sql
+SELECT
+  $__timeGroupAlias(timestamp, '1m'),
+  avg(response_time) as value,
+  endpoint as metric
+FROM http_requests
+WHERE $__timeFilter(timestamp)
+GROUP BY time, endpoint
+ORDER BY time
+```
+
+Creates one series per endpoint.
+
+### Multiple Values
+
+Return multiple value columns:
+
+```sql
+SELECT
+  $__timeGroupAlias(timestamp, '5m'),
+  avg(cpu_usage) as cpu,
+  avg(memory_usage) as memory,
+  'server-01' as metric
+FROM system_metrics
+WHERE $__timeFilter(timestamp)
+GROUP BY time
+ORDER BY time
+```
+
+The `metric` column is used as a prefix: `server-01 cpu`, `server-01 memory`.
+
+### Table Query
+
+```sql
+SELECT
+  timestamp,
+  hostname,
+  status_code,
+  response_time
+FROM http_logs
+WHERE $__timeFilter(timestamp)
+ORDER BY timestamp DESC
+LIMIT 100
+```
+
+Displays as a table in Grafana.
+
+### Aggregation by Label
+
+```sql
+SELECT
+  $__timeGroupAlias(created_at, '10m'),
+  status,
+  COUNT(*) as value
+FROM orders
+WHERE $__timeFilter(created_at)
+GROUP BY time, status
+ORDER BY time
+```
+
+## Template Variables
+
+### Query Variables
+
+Populate variables from query results:
+
+**MySQL:**
+
+```sql
+SELECT DISTINCT hostname FROM servers ORDER BY hostname
+```
+
+**PostgreSQL:**
+
+```sql
+SELECT DISTINCT region FROM instances WHERE active = true
+```
+
+### Multi-Value Variables
+
+Use `IN` clause with multi-value variables:
+
+```sql
+SELECT
+  $__timeGroupAlias(timestamp, '5m'),
+  AVG(cpu_usage) as value,
+  hostname as metric
+FROM metrics
+WHERE 
+  $__timeFilter(timestamp)
+  AND hostname IN ($hostname)
+GROUP BY time, hostname
+ORDER BY time
+```
+
+### Variable with Filters
+
+```sql
+SELECT DISTINCT datacenter 
+FROM servers 
+WHERE region = '$region' AND active = 1
+ORDER BY datacenter
+```
+
+## Performance Optimization
+
+<CardGroup cols={2}>
+  <Card title="Use Indexes" icon="bolt">
+    Create indexes on time columns and filter columns:
+    ```sql
+    CREATE INDEX idx_timestamp ON metrics(timestamp);
+    CREATE INDEX idx_hostname ON metrics(hostname, timestamp);
+    ```
+  </Card>
+  
+  <Card title="Limit Time Range" icon="clock">
+    Always use time filters to reduce query scope:
+    ```sql
+    WHERE $__timeFilter(created_at)
+    ```
+  </Card>
+  
+  <Card title="Use Connection Pooling" icon="server">
+    Configure appropriate connection pool sizes:
+    ```yaml
+    maxOpenConns: 100
+    maxIdleConns: 10
+    ```
+  </Card>
+  
+  <Card title="Aggregate at Database" icon="chart-bar">
+    Let the database do aggregations:
+    ```sql
+    SELECT 
+      $__timeGroup(time, '5m'),
+      AVG(value)
+    GROUP BY time
+    ```
+  </Card>
+</CardGroup>
+
+## TimescaleDB Support (PostgreSQL)
+
+For PostgreSQL with TimescaleDB:
+
+### Enable TimescaleDB
+
+Check "TimescaleDB" in data source settings for optimized time-series queries.
+
+### Hypertable Queries
+
+```sql
+SELECT 
+  time_bucket('5 minutes', time) AS time,
+  avg(value) as value
+FROM metrics
+WHERE time > NOW() - INTERVAL '1 hour'
+GROUP BY time_bucket('5 minutes', time)
+ORDER BY time
+```
+
+### Continuous Aggregates
+
+```sql
+SELECT 
+  bucket,
+  avg_value
+FROM metrics_5min
+WHERE bucket >= NOW() - INTERVAL '24 hours'
+ORDER BY bucket
+```
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="Connection failed">
+    - Verify host and port are correct
+    - Check database firewall rules allow Grafana IP
+    - Confirm database is running: `systemctl status mysql` / `postgresql`
+    - Test connection from Grafana server: `mysql -h host -u user -p`
+    - Review database logs for connection errors
+  </Accordion>
+  
+  <Accordion title="No data in time series">
+    - Ensure query returns column named `time` or `time_sec`
+    - Verify time values are in UTC
+    - Check time range includes data: `SELECT MIN(time), MAX(time) FROM table`
+    - Confirm numeric value columns exist
+    - Results must be ordered by time: `ORDER BY time`
+  </Accordion>
+  
+  <Accordion title="Query timeout">
+    - Add indexes on filtered columns
+    - Reduce time range
+    - Use `LIMIT` clause for testing
+    - Check database slow query log
+    - Increase query timeout in database config
+  </Accordion>
+  
+  <Accordion title="Variable not populating">
+    - Verify query returns results in database client
+    - Check variable query syntax
+    - Review Grafana server logs for query errors
+    - Ensure proper permissions for user
+  </Accordion>
+</AccordionGroup>
+
+## Best Practices
+
+1. **Always filter by time**: Use `$__timeFilter()` in WHERE clause
+2. **Create proper indexes**: Index time columns and frequently filtered fields
+3. **Use macros**: Leverage Grafana macros for time operations
+4. **Limit result sets**: Use LIMIT for table queries
+5. **Use connection pooling**: Configure appropriate pool sizes
+6. **Aggregate in database**: Use GROUP BY instead of post-processing
+7. **Order results by time**: Required for time series visualization
+8. **Monitor database performance**: Watch for slow queries and optimize
+
+## Security Considerations
+
+<Warning>
+- Use read-only database users for Grafana
+- Grant SELECT permission only
+- Never use root/admin database accounts
+- Use SSL/TLS for database connections in production
+- Regularly rotate database passwords
+</Warning>
+
+## Further Reading
+
+- [MySQL Official Documentation](https://dev.mysql.com/doc/)
+- [PostgreSQL Official Documentation](https://www.postgresql.org/docs/)
+- [TimescaleDB Documentation](https://docs.timescale.com/)
+- [SQL Query Optimization](/performance/query-optimization/)

@@ -1,0 +1,89 @@
+---
+title: Getting Started
+description: Introduction to Grafana development and how to contribute to the project
+---
+
+Welcome to Grafana development! This guide will help you start contributing to Grafana, whether you're fixing bugs, adding features, or improving documentation.
+
+## What is Grafana?
+
+Grafana is a monitoring and observability platform built with:
+- **Backend**: Go
+- **Frontend**: TypeScript and React
+- **Architecture**: Monorepo with Yarn workspaces (frontend) and Go workspaces (backend)
+
+Grafana consists of two main components that are built and deployed separately:
+- The **frontend** - TypeScript/React application with hot-reload development
+- The **backend** - Go web server with API handlers and business logic
+
+## Before You Start
+
+We welcome all contributors who want to help improve Grafana in a healthy and constructive manner. Please:
+
+- Review our [Code of Conduct](https://github.com/grafana/grafana/blob/main/CODE_OF_CONDUCT.md)
+- Consider joining the [Grafana Champions program](https://grafana.com/community/champions/)
+- Share feedback through our [Open Source Contributor Experience Survey](https://gra.fan/ome)
+
+## Choose the Right Channel
+
+Use the appropriate channel for your needs:
+
+- **GitHub Issues & Pull Requests**: For reproducible bugs, small feature requests, and code/docs changes
+- **Grafana Community Forums**: For questions, troubleshooting, best practices, and early idea discussion
+- **Grafana Community Slack**: For quick chats and networking
+- **Not sure?** Start with the [community forums](https://community.grafana.com/)
+
+## Ways to Contribute
+
+### Code Contributions
+
+1. **Fix bugs or add features**: Browse [help wanted issues](https://github.com/grafana/grafana/issues?q=is%3Aopen+is%3Aissue+label%3A%22help+wanted%22)
+2. **Set up your environment**: Follow the [Local Setup](/development/local-setup) guide
+3. **Understand the codebase**: Learn the [Project Structure](/development/project-structure)
+4. **Build and test**: See [Building Grafana](/development/building)
+
+### Non-Code Contributions
+
+You can help even if you don't write code:
+
+- **Report bugs**: Use the [bug report template](https://github.com/grafana/grafana/issues/new?template=0-bug-report.yaml)
+- **Request features**: Submit a [feature request](https://github.com/grafana/grafana/issues/new?template=1-feature_requests.md)
+- **Improve documentation**: See the [documentation contribution guide](https://github.com/grafana/grafana/blob/main/contribute/documentation)
+- **Triage issues**: Help by reviewing, labeling, and clarifying [open issues](https://github.com/grafana/grafana/blob/main/contribute/triage-issues.md)
+
+### Develop Plugins
+
+Extend Grafana with new data sources, panels, and more:
+
+1. Read the [plugin development guide](https://grafana.com/developers/plugin-tools)
+2. Scaffold your plugin using recommended tools
+3. Develop and test locally
+4. Publish or submit for review
+
+## Contributor License Agreement
+
+Before we can accept your pull request, you need to [sign our CLA](https://grafana.com/docs/grafana/latest/developers/cla/). Our CLA assistant will prompt you when you create your pull request.
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Local Setup" icon="laptop-code" href="/development/local-setup">
+    Install dependencies and configure your development environment
+  </Card>
+  <Card title="Project Structure" icon="folder-tree" href="/development/project-structure">
+    Learn how the Grafana monorepo is organized
+  </Card>
+  <Card title="Building" icon="hammer" href="/development/building">
+    Build and run Grafana locally
+  </Card>
+  <Card title="Testing" icon="flask" href="/development/contributing/testing">
+    Run frontend, backend, and end-to-end tests
+  </Card>
+</CardGroup>
+
+## Community & Support
+
+- **Forums**: [community.grafana.com](https://community.grafana.com/)
+- **Slack**: [slack.grafana.com](https://slack.grafana.com)
+- **Meetups**: [Find a local Grafana & Friends group](https://www.grafana.com/g/communityengcamp-githubtomeetup)
+- **YouTube**: [Grafana Labs channel](https://www.grafana.com/g/communityengcamp-githubtoyoutube)

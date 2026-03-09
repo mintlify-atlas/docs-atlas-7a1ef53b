@@ -1,0 +1,519 @@
+---
+title: Database architecture
+description: Understand Grafana's database layer and storage patterns
+---
+
+# Database architecture
+
+Grafana's database layer provides persistence for dashboards, users, organizations, data sources, and other core entities. The architecture supports multiple database backends with a unified abstraction layer.
+
+## Supported databases
+
+Grafana supports three database backends:
+
+### SQLite (default)
+
+- **Use case:** Single-server deployments, development, testing
+- **Location:** `<data>/grafana.db`
+- **Pros:** Zero configuration, embedded, fast for small deployments
+- **Cons:** Not suitable for high-availability or distributed setups
+
+```ini
+# grafana.ini
+[database]
+type = sqlite3
+path = grafana.db
+```
+
+### PostgreSQL (recommended for production)
+
+- **Use case:** Production deployments, high availability
+- **Pros:** ACID compliance, excellent performance, JSON support, full-text search
+- **Cons:** Requires separate database server
+
+```ini
+# grafana.ini
+[database]
+type = postgres
+host = localhost:5432
+name = grafana
+user = grafana
+password = ${DB_PASSWORD}
+ssl_mode = require
+```
+
+### MySQL/MariaDB
+
+- **Use case:** Production deployments (alternative to PostgreSQL)
+- **Pros:** Widely used, good performance
+- **Cons:** Requires separate database server
+
+```ini
+# grafana.ini
+[database]
+type = mysql
+host = localhost:3306
+name = grafana
+user = grafana
+password = ${DB_PASSWORD}
+```
+
+## Database abstraction layer
+
+### SQLStore
+
+The main database interface is `pkg/services/sqlstore/sqlstore.go`:
+
+```go
+type SQLStore struct {
+    cfg         *setting.Cfg
+    features    featuremgmt.FeatureToggles
+    engine      *xorm.Engine
+    dialect     migrator.Dialect
+    migrations  registry.DatabaseMigrator
+    log         log.Logger
+}
+
+func (ss *SQLStore) WithDbSession(ctx context.Context, callback dbutil.SessionFunc) error {
+    return ss.engine.NewSession().WithContext(ctx).Begin(callback)
+}
+
+func (ss *SQLStore) WithTransactionalDbSession(ctx context.Context, callback dbutil.SessionFunc) error {
+    sess := ss.engine.NewSession().WithContext(ctx)
+    if err := sess.Begin(); err != nil {
+        return err
+    }
+    
+    defer sess.Close()
+    
+    if err := callback(sess); err != nil {
+        sess.Rollback()
+        return err
+    }
+    
+    return sess.Commit()
+}
+```
+
+**Key methods:**
+- `WithDbSession` - Execute queries in a session (no transaction)
+- `WithTransactionalDbSession` - Execute queries in a transaction
+- `GetEngine` - Get underlying XORM engine
+- `GetDialect` - Get database dialect for SQL differences
+
+### XORM engine
+
+Grafana uses [XORM](https://xorm.io/) as its ORM:
+
+```go
+// Basic query
+var user User
+has, err := sess.Where("id = ?", id).Get(&user)
+
+// List query
+var users []User
+err := sess.Where("org_id = ?", orgID).Find(&users)
+
+// Insert
+user := &User{Name: "John", Email: "john@example.com"}
+affected, err := sess.Insert(user)
+
+// Update
+user.Name = "Jane"
+affected, err := sess.Where("id = ?", user.ID).Update(user)
+
+// Delete
+affected, err := sess.Where("id = ?", id).Delete(&User{})
+```
+
+### Session and transaction patterns
+
+#### Non-transactional query
+
+```go
+func (s *DashboardStore) GetDashboard(ctx context.Context, dashboardID int64) (*Dashboard, error) {
+    dashboard := &Dashboard{}
+    err := s.sqlStore.WithDbSession(ctx, func(sess *session.SessionDB) error {
+        exists, err := sess.Where("id = ?", dashboardID).Get(dashboard)
+        if err != nil {
+            return err
+        }
+        if !exists {
+            return ErrDashboardNotFound
+        }
+        return nil
+    })
+    return dashboard, err
+}
+```
+
+#### Transactional operations
+
+```go
+func (s *DashboardStore) SaveDashboard(ctx context.Context, cmd *SaveDashboardCommand) error {
+    return s.sqlStore.WithTransactionalDbSession(ctx, func(sess *session.SessionDB) error {
+        // Insert dashboard
+        if _, err := sess.Insert(cmd.Dashboard); err != nil {
+            return err
+        }
+        
+        // Update folder
+        if cmd.Dashboard.FolderID != 0 {
+            folder := &Folder{ID: cmd.Dashboard.FolderID}
+            if _, err := sess.ID(folder.ID).Cols("updated").Update(folder); err != nil {
+                return err
+            }
+        }
+        
+        // All operations succeed or all fail
+        return nil
+    })
+}
+```
+
+## Database schema
+
+### Core tables
+
+| Table | Purpose |
+|-------|----------|
+| `dashboard` | Dashboard definitions and metadata |
+| `dashboard_version` | Dashboard version history |
+| `folder` | Folder hierarchy |
+| `data_source` | Data source configurations |
+| `user` | User accounts |
+| `org` | Organizations |
+| `org_user` | User-organization memberships |
+| `team` | Teams within organizations |
+| `team_member` | Team memberships |
+| `playlist` | Playlist definitions |
+| `alert` | Legacy alerting rules |
+| `alert_rule` | Unified alerting rules |
+| `annotation` | Dashboard annotations |
+| `api_key` | API keys for authentication |
+| `session` | User sessions |
+
+### Example schema: Dashboard table
+
+```sql
+CREATE TABLE dashboard (
+    id INTEGER PRIMARY KEY AUTO_INCREMENT,
+    version INTEGER NOT NULL,
+    slug VARCHAR(189) NOT NULL,
+    title VARCHAR(255) NOT NULL,
+    data TEXT NOT NULL,
+    org_id INTEGER NOT NULL,
+    created DATETIME NOT NULL,
+    updated DATETIME NOT NULL,
+    uid VARCHAR(40),
+    folder_id INTEGER DEFAULT 0,
+    is_folder BOOLEAN DEFAULT 0,
+    has_acl BOOLEAN DEFAULT 0,
+    
+    INDEX idx_dashboard_org_id (org_id),
+    INDEX idx_dashboard_folder_id (folder_id),
+    UNIQUE INDEX udx_dashboard_org_id_uid (org_id, uid)
+);
+```
+
+## Migration system
+
+Database schema changes are managed through migrations in `pkg/services/sqlstore/migrations/`.
+
+### Migration structure
+
+```go
+// pkg/services/sqlstore/migrations/dashboard_mig.go
+func addDashboardMigration(mg *migrator.Migrator) {
+    dashboardV1 := migrator.Table{
+        Name: "dashboard",
+        Columns: []*migrator.Column{
+            {Name: "id", Type: migrator.DB_BigInt, IsPrimaryKey: true, IsAutoIncrement: true},
+            {Name: "version", Type: migrator.DB_Int, Nullable: false},
+            {Name: "slug", Type: migrator.DB_NVarchar, Length: 189, Nullable: false},
+            {Name: "title", Type: migrator.DB_NVarchar, Length: 255, Nullable: false},
+            {Name: "data", Type: migrator.DB_Text, Nullable: false},
+            {Name: "org_id", Type: migrator.DB_BigInt, Nullable: false},
+            {Name: "created", Type: migrator.DB_DateTime, Nullable: false},
+            {Name: "updated", Type: migrator.DB_DateTime, Nullable: false},
+        },
+        Indices: []*migrator.Index{
+            {Cols: []string{"org_id"}},
+        },
+    }
+    
+    mg.AddMigration("create dashboard table", migrator.NewAddTableMigration(dashboardV1))
+    
+    // Add column migration
+    mg.AddMigration("add column uid", migrator.NewAddColumnMigration(dashboardV1, &migrator.Column{
+        Name:     "uid",
+        Type:     migrator.DB_NVarchar,
+        Length:   40,
+        Nullable: true,
+    }))
+    
+    // Add index migration
+    mg.AddMigration("add index dashboard org_id uid", migrator.NewAddIndexMigration(dashboardV1, &migrator.Index{
+        Type: migrator.UniqueIndex,
+        Name: "UQE_dashboard_org_id_uid",
+        Cols: []string{"org_id", "uid"},
+    }))
+}
+```
+
+### Running migrations
+
+Migrations run automatically on server startup:
+
+```go
+func (ss *SQLStore) Migrate(lock bool) error {
+    mg := migrator.NewMigrator(ss.engine, ss.cfg)
+    
+    // Register all migrations
+    dashboard_mig.AddMigration(mg)
+    users_mig.AddMigration(mg)
+    // ... more migrations
+    
+    return mg.Start(lock)
+}
+```
+
+The migration system:
+- Tracks which migrations have run in the `migration_log` table
+- Executes only new migrations
+- Supports database-specific SQL via dialects
+- Can lock during migrations for multi-instance safety
+
+### Creating a new migration
+
+1. Add migration to appropriate file in `pkg/services/sqlstore/migrations/`:
+
+```go
+func addMyNewMigration(mg *migrator.Migrator) {
+    mg.AddMigration("add my_column to dashboard", migrator.NewAddColumnMigration(
+        dashboardTable,
+        &migrator.Column{
+            Name:     "my_column",
+            Type:     migrator.DB_NVarchar,
+            Length:   255,
+            Nullable: true,
+        },
+    ))
+}
+```
+
+2. Register in migration initialization
+3. Test with all supported databases:
+
+```bash
+make devenv sources=postgres_tests,mysql_tests
+make test-go-integration-postgres
+make test-go-integration-mysql
+```
+
+## Repository pattern
+
+Data access is organized using the repository pattern:
+
+```go
+// Interface definition
+type DashboardStore interface {
+    GetDashboard(ctx context.Context, query *GetDashboardQuery) (*Dashboard, error)
+    SaveDashboard(ctx context.Context, cmd *SaveDashboardCommand) error
+    DeleteDashboard(ctx context.Context, cmd *DeleteDashboardCommand) error
+}
+
+// Implementation
+type dashboardStore struct {
+    sqlStore *sqlstore.SQLStore
+    log      log.Logger
+}
+
+func NewDashboardStore(sqlStore *sqlstore.SQLStore) DashboardStore {
+    return &dashboardStore{
+        sqlStore: sqlStore,
+        log:      log.New("dashboard-store"),
+    }
+}
+
+func (s *dashboardStore) GetDashboard(ctx context.Context, query *GetDashboardQuery) (*Dashboard, error) {
+    dashboard := &Dashboard{}
+    err := s.sqlStore.WithDbSession(ctx, func(sess *session.SessionDB) error {
+        exists, err := sess.Where("id = ? AND org_id = ?", query.ID, query.OrgID).Get(dashboard)
+        if err != nil {
+            return err
+        }
+        if !exists {
+            return ErrDashboardNotFound
+        }
+        return nil
+    })
+    return dashboard, err
+}
+```
+
+**Benefits:**
+- Abstraction from SQL details
+- Testability via mocks
+- Clear separation of concerns
+- Database-agnostic service layer
+
+## Raw SQL for complex queries
+
+For complex queries, use raw SQL with proper escaping:
+
+```go
+func (s *DashboardStore) SearchDashboards(ctx context.Context, query *SearchDashboardsQuery) ([]*Dashboard, error) {
+    var dashboards []*Dashboard
+    
+    err := s.sqlStore.WithDbSession(ctx, func(sess *session.SessionDB) error {
+        sql := `
+            SELECT d.*
+            FROM dashboard d
+            LEFT JOIN dashboard_tag dt ON d.id = dt.dashboard_id
+            WHERE d.org_id = ?
+                AND d.is_folder = 0
+                AND ($tagFilter)
+                AND ($searchFilter)
+            GROUP BY d.id
+            ORDER BY d.title
+            LIMIT ? OFFSET ?
+        `
+        
+        // Build dynamic filters
+        tagFilter := "1=1"
+        if len(query.Tags) > 0 {
+            tagFilter = "dt.term IN (" + strings.Repeat("?,", len(query.Tags)-1) + "?)" 
+        }
+        
+        searchFilter := "1=1"
+        if query.Query != "" {
+            searchFilter = "d.title LIKE ?"
+        }
+        
+        sql = strings.Replace(sql, "$tagFilter", tagFilter, 1)
+        sql = strings.Replace(sql, "$searchFilter", searchFilter, 1)
+        
+        // Build args
+        args := []interface{}{query.OrgID}
+        for _, tag := range query.Tags {
+            args = append(args, tag)
+        }
+        if query.Query != "" {
+            args = append(args, "%"+query.Query+"%")
+        }
+        args = append(args, query.Limit, query.Offset)
+        
+        return sess.SQL(sql, args...).Find(&dashboards)
+    })
+    
+    return dashboards, err
+}
+```
+
+## Database dialect handling
+
+Handle database-specific differences:
+
+```go
+func (s *DashboardStore) getConflictClause(dialect migrator.Dialect) string {
+    switch dialect.DriverName() {
+    case migrator.Postgres:
+        return "ON CONFLICT (org_id, uid) DO UPDATE SET title = EXCLUDED.title"
+    case migrator.MySQL:
+        return "ON DUPLICATE KEY UPDATE title = VALUES(title)"
+    case migrator.SQLite:
+        return "ON CONFLICT(org_id, uid) DO UPDATE SET title = excluded.title"
+    default:
+        return ""
+    }
+}
+```
+
+## Performance considerations
+
+### Indexes
+
+Add indexes for frequently queried columns:
+
+```go
+mg.AddMigration("add index dashboard_org_id_uid", migrator.NewAddIndexMigration(dashboardTable, &migrator.Index{
+    Type: migrator.IndexType,
+    Name: "IDX_dashboard_org_id_uid",
+    Cols: []string{"org_id", "uid"},
+}))
+```
+
+### Query optimization
+
+- Use appropriate indexes
+- Avoid N+1 queries (use joins or batch loading)
+- Use pagination for large result sets
+- Cache frequently accessed data
+
+### Connection pooling
+
+Configure connection pool in `grafana.ini`:
+
+```ini
+[database]
+max_idle_conn = 2
+max_open_conn = 100
+conn_max_lifetime = 14400  # seconds
+```
+
+## Unified Storage (experimental)
+
+Grafana is moving towards Unified Storage backed by Kubernetes:
+
+- **Location:** `pkg/storage/unified/`
+- **Purpose:** K8s-native resource storage
+- **Benefits:** Scalability, consistency, versioning
+- **Status:** Experimental, opt-in via feature toggle
+
+See `pkg/storage/unified/migrations/` for migration path from SQL to Unified Storage.
+
+## Testing with databases
+
+### Unit tests with SQLite
+
+```go
+func TestDashboardStore(t *testing.T) {
+    sqlStore := sqlstore.InitTestDB(t)
+    store := NewDashboardStore(sqlStore)
+    
+    // Test operations
+    dashboard := &Dashboard{Title: "Test"}
+    err := store.SaveDashboard(context.Background(), &SaveDashboardCommand{
+        Dashboard: dashboard,
+    })
+    require.NoError(t, err)
+}
+```
+
+### Integration tests with PostgreSQL/MySQL
+
+```bash
+# Start test databases
+make devenv sources=postgres_tests,mysql_tests
+
+# Run integration tests
+make test-go-integration-postgres
+make test-go-integration-mysql
+```
+
+## Key patterns summary
+
+- **SQLStore abstraction** - Unified interface for all databases
+- **XORM ORM** - Object-relational mapping
+- **Migration system** - Version-controlled schema changes
+- **Repository pattern** - Clean data access layer
+- **Transaction support** - ACID guarantees
+- **Dialect handling** - Database-specific SQL
+- **Connection pooling** - Performance optimization
+
+## Related documentation
+
+- [Backend architecture](./backend.mdx)
+- [Migration system](/development/backend/database-migrations)
+- [Unified Storage](/development/unified-storage)

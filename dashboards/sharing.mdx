@@ -1,0 +1,581 @@
+---
+title: Sharing Dashboards
+description: Learn how to share Grafana dashboards using links, snapshots, exports, and access controls.
+---
+
+# Sharing Dashboards
+
+Grafana provides multiple ways to share dashboards with your team, stakeholders, or the public. Choose the method that best fits your security and collaboration needs.
+
+## Sharing Methods
+
+<CardGroup cols={2}>
+  <Card title="Share Links" icon="link">
+    Direct URLs with customizable time ranges and themes
+  </Card>
+  <Card title="Snapshots" icon="camera">
+    Point-in-time captures that can be shared externally
+  </Card>
+  <Card title="Export JSON" icon="file-export">
+    Download dashboard configuration for version control or migration
+  </Card>
+  <Card title="Embed" icon="code">
+    Embed panels in external websites using iframes
+  </Card>
+  <Card title="Public Dashboards" icon="globe">
+    Share dashboards publicly without authentication
+  </Card>
+  <Card title="Permissions" icon="lock">
+    Control access with user and team permissions
+  </Card>
+</CardGroup>
+
+## Share Links
+
+Create direct links to dashboards or individual panels:
+
+<Steps>
+  <Step title="Open Share Dialog">
+    Click the **Share** icon in the dashboard toolbar (or panel menu for panels)
+  </Step>
+  <Step title="Select Link Tab">
+    Choose the **Link** tab in the share modal
+  </Step>
+  <Step title="Configure Options">
+    Set time range, theme, and URL shortening preferences
+  </Step>
+  <Step title="Copy Link">
+    Click **Copy** to copy the URL to clipboard
+  </Step>
+</Steps>
+
+### Link Options
+
+```typescript
+interface ShareLinkOptions {
+  useCurrentTimeRange: boolean;  // Lock to current time range
+  theme: 'current' | 'light' | 'dark';  // Theme selection
+  shortenUrl: boolean;           // Create short URL
+  panelId?: number;              // Share specific panel
+}
+
+// Example link formats
+// Dashboard link
+https://grafana.example.com/d/abc123/dashboard-name
+
+// Dashboard with time range
+https://grafana.example.com/d/abc123/dashboard-name?from=now-6h&to=now
+
+// Panel link
+https://grafana.example.com/d/abc123/dashboard-name?viewPanel=2
+
+// With variables
+https://grafana.example.com/d/abc123/dashboard-name?var-server=web01&var-env=prod
+```
+
+### Lock Time Range
+
+When **Lock time range** is enabled:
+
+- Relative time ranges (e.g., `now-6h`) are converted to absolute timestamps
+- Viewers see the exact time window you selected
+- Dashboard auto-refresh is disabled
+
+```bash
+# Relative (default)
+from=now-6h&to=now
+
+# Absolute (locked)
+from=1704067200000&to=1704088800000
+```
+
+### Theme Selection
+
+```typescript
+enum Theme {
+  Current = 'current',  // Viewer's preference
+  Light = 'light',      // Force light theme  
+  Dark = 'dark'         // Force dark theme
+}
+
+// URL parameter
+&theme=dark
+```
+
+### Short URLs
+
+Shorten long URLs for easier sharing:
+
+```bash
+# Original
+https://grafana.example.com/d/abc123/my-dashboard?from=1704067200000&to=1704088800000&var-server=web01&var-env=prod
+
+# Shortened
+https://grafana.example.com/goto/xyz789
+```
+
+<Note>
+  Short URLs are stored in Grafana's database and require authentication to create. They redirect to the full URL when accessed.
+</Note>
+
+## Snapshots
+
+Snapshots capture dashboard state at a specific moment:
+
+```typescript
+interface DashboardSnapshot {
+  name: string;              // Snapshot name
+  expires: number;           // Expiration in seconds (0 = never)
+  external: boolean;         // Share externally
+  snapshotData: Dashboard;   // Complete dashboard state
+  key: string;               // Unique snapshot key
+}
+```
+
+### Creating Snapshots
+
+<Steps>
+  <Step title="Open Snapshot Dialog">
+    Click **Share** → **Snapshot** tab
+  </Step>
+  <Step title="Configure Snapshot">
+    Set snapshot name and expiration time
+  </Step>
+  <Step title="Publish Snapshot">
+    Choose local or external sharing
+  </Step>
+  <Step title="Share URL">
+    Copy the generated snapshot URL
+  </Step>
+</Steps>
+
+### Snapshot Configuration
+
+```typescript
+// Snapshot options
+const snapshotOptions = {
+  name: "Production Issues - 2024-01-15",
+  expires: 3600 * 24 * 7,    // 1 week
+  external: false,            // Local only
+  timeout: 4000              // Render timeout (ms)
+};
+
+// Expiration options
+expires: 3600              // 1 hour
+expires: 3600 * 24         // 1 day  
+expires: 3600 * 24 * 7     // 1 week
+expires: 0                 // Never expire
+```
+
+### Local vs External Snapshots
+
+**Local Snapshots:**
+- Stored in your Grafana instance
+- Require authentication to view
+- Automatically expire based on configuration
+- URL: `https://grafana.example.com/dashboard/snapshot/xyz`
+
+**External Snapshots:**
+- Published to external snapshot service (e.g., snapshots.raintank.io)
+- Publicly accessible without authentication
+- Independent of your Grafana instance
+- URL: `https://snapshots.raintank.io/dashboard/snapshot/xyz`
+
+<Warning>
+  Snapshots contain all dashboard data at the time of creation. Be careful not to include sensitive information when sharing externally.
+</Warning>
+
+### Managing Snapshots
+
+View and delete snapshots:
+
+```bash
+# List snapshots API
+GET /api/dashboard/snapshots
+
+# Delete snapshot
+DELETE /api/snapshots/{key}
+
+# Delete using deleteKey (from creation response)
+DELETE /api/snapshots-delete/{deleteKey}
+```
+
+## Export Dashboard
+
+Export dashboard JSON for backup or migration:
+
+<Steps>
+  <Step title="Open Dashboard Settings">
+    Click the gear icon → **JSON Model**
+  </Step>
+  <Step title="Copy or Download">
+    Copy JSON or click **Save to file** to download
+  </Step>
+  <Step title="Optional: Clean Data">
+    Remove sensitive data or specific panel IDs if needed
+  </Step>
+</Steps>
+
+### Export Formats
+
+```typescript
+enum ExportFormat {
+  Classic = 'classic',        // Traditional JSON
+  V1Resource = 'v1-resource', // Kubernetes v1 spec
+  V2Resource = 'v2-resource'  // Kubernetes v2 spec
+}
+
+// Export via API
+GET /api/dashboards/uid/{uid}?format=classic
+```
+
+### Dashboard JSON Structure
+
+```json
+{
+  "dashboard": {
+    "uid": "abc123",
+    "title": "My Dashboard",
+    "panels": [...],
+    "templating": {...},
+    "time": {...},
+    "version": 1
+  },
+  "meta": {
+    "canSave": true,
+    "canEdit": true,
+    "canDelete": true,
+    "url": "/d/abc123/my-dashboard",
+    "expires": "0001-01-01T00:00:00Z",
+    "created": "2024-01-15T10:00:00Z",
+    "updated": "2024-01-15T14:30:00Z",
+    "createdBy": "admin",
+    "updatedBy": "admin",
+    "version": 5
+  },
+  "message": "Exported dashboard"
+}
+```
+
+### Cleaning Exported JSON
+
+Remove instance-specific data:
+
+```javascript
+// Remove before sharing/importing
+delete dashboard.id;           // Database ID
+delete dashboard.version;      // Version number
+delete meta;                   // All metadata
+
+// Optionally remove
+delete dashboard.uid;          // UID (generates new on import)
+
+// Keep these
+dashboard.panels              // Panel configuration
+dashboard.templating          // Variables
+dashboard.time                // Time settings
+```
+
+## Embedding Dashboards
+
+Embed panels in external websites:
+
+### Panel Embed
+
+```html
+<!-- Embed URL format -->
+<iframe
+  src="https://grafana.example.com/d-solo/abc123/dashboard-name?panelId=2&from=now-6h&to=now&theme=light"
+  width="800"
+  height="400"
+  frameborder="0"
+></iframe>
+```
+
+### Embed URL Parameters
+
+```typescript
+interface EmbedParams {
+  panelId: number;           // Required: Panel to display
+  from?: string;             // Time range start
+  to?: string;               // Time range end
+  theme?: 'light' | 'dark';  // Theme
+  refresh?: string;          // Auto-refresh interval
+  kiosk?: boolean;           // Kiosk mode (hide controls)
+  'var-name'?: string;       // Variable values
+}
+
+// Example embed URL
+https://grafana.example.com/d-solo/abc123/dashboard?
+  panelId=2&
+  from=now-6h&
+  to=now&
+  theme=light&
+  refresh=1m&
+  kiosk=true&
+  var-server=web01
+```
+
+### Kiosk Mode
+
+Hide Grafana UI elements:
+
+```bash
+# TV mode - hide top navigation
+?kiosk=tv
+
+# Full kiosk - hide all controls
+?kiosk=true
+
+# Combined with embed
+https://grafana.example.com/d-solo/abc123/dashboard?panelId=2&kiosk=true
+```
+
+<Note>
+  Embedded dashboards require viewers to have access to the dashboard. Configure authentication or use public dashboards for unauthenticated embedding.
+</Note>
+
+## Public Dashboards
+
+Share dashboards publicly without authentication:
+
+<Steps>
+  <Step title="Enable Public Dashboard">
+    Go to **Dashboard settings** → **Public dashboard**
+  </Step>
+  <Step title="Configure Access">
+    Set time range behavior and enable/disable annotations
+  </Step>
+  <Step title="Generate Link">
+    Click **Generate public URL** to create shareable link
+  </Step>
+  <Step title="Share URL">
+    Copy and share the public URL
+  </Step>
+</Steps>
+
+### Public Dashboard Configuration
+
+```typescript
+interface PublicDashboardConfig {
+  isEnabled: boolean;          // Enable public access
+  useTimeRange: boolean;       // Use dashboard time range
+  annotationsEnabled: boolean; // Show annotations
+  uid: string;                 // Public dashboard UID
+  accessToken: string;         // Access token for URL
+}
+
+// Public URL format
+https://grafana.example.com/public-dashboards/{accessToken}
+```
+
+<Warning>
+  Public dashboards are accessible to anyone with the URL. Ensure no sensitive data is displayed.
+</Warning>
+
+## Dashboard Permissions
+
+Control who can view and edit dashboards:
+
+```typescript
+interface DashboardPermission {
+  role?: 'Viewer' | 'Editor' | 'Admin';  // Organization role
+  userId?: number;             // Specific user
+  teamId?: number;             // Specific team
+  permission: 1 | 2 | 4;       // 1=View, 2=Edit, 4=Admin
+}
+
+enum Permission {
+  View = 1,    // Can view dashboard
+  Edit = 2,    // Can edit dashboard
+  Admin = 4    // Can manage permissions
+}
+```
+
+### Setting Permissions
+
+<Steps>
+  <Step title="Open Permissions">
+    Go to **Dashboard settings** → **Permissions**
+  </Step>
+  <Step title="Add Permission">
+    Click **Add permission** and select user, team, or role
+  </Step>
+  <Step title="Set Level">
+    Choose View, Edit, or Admin permission level
+  </Step>
+  <Step title="Save">
+    Click **Save** to apply permissions
+  </Step>
+</Steps>
+
+### Permission Inheritance
+
+Dashboards inherit permissions from their folder:
+
+```typescript
+// Folder permissions
+Folder: "Production"
+  Permissions:
+    - Team: SRE → Admin
+    - Team: Developers → Edit
+    - Role: Viewer → View
+
+// Dashboard inherits these by default
+Dashboard: "API Metrics" (in "Production" folder)
+  Inherits folder permissions automatically
+```
+
+## API-Based Sharing
+
+Programmatically share dashboards:
+
+### Create Snapshot via API
+
+```bash
+POST /api/snapshots
+Content-Type: application/json
+
+{
+  "dashboard": {
+    "uid": "abc123",
+    "title": "My Dashboard",
+    "panels": [...]
+  },
+  "name": "Production Issues",
+  "expires": 3600,
+  "external": false
+}
+
+# Response
+{
+  "key": "xyz789",
+  "deleteKey": "delete-xyz789",
+  "url": "/dashboard/snapshot/xyz789",
+  "deleteUrl": "/api/snapshots-delete/delete-xyz789"
+}
+```
+
+### Get Dashboard JSON via API
+
+```bash
+GET /api/dashboards/uid/{uid}
+Authorization: Bearer {api-key}
+
+# Response includes full dashboard JSON
+{
+  "meta": {...},
+  "dashboard": {...}
+}
+```
+
+### Share with Service Accounts
+
+Use service accounts for automated sharing:
+
+```bash
+# Create service account
+POST /api/serviceaccounts
+{
+  "name": "dashboard-exporter",
+  "role": "Viewer"
+}
+
+# Generate token
+POST /api/serviceaccounts/{id}/tokens
+{
+  "name": "export-token"
+}
+
+# Use token to export dashboards
+GET /api/dashboards/uid/{uid}
+Authorization: Bearer {service-account-token}
+```
+
+## Best Practices
+
+<CardGroup cols={2}>
+  <Card title="Security" icon="shield-alt">
+    Review dashboard content before sharing externally. Remove sensitive queries, data, and credentials.
+  </Card>
+  <Card title="Expiration" icon="clock">
+    Set appropriate expiration times for snapshots. Use shorter durations for sensitive data.
+  </Card>
+  <Card title="Permissions" icon="users">
+    Use team-based permissions rather than individual users for easier management.
+  </Card>
+  <Card title="Documentation" icon="book">
+    Add descriptions and comments to exported dashboards to provide context.
+  </Card>
+</CardGroup>
+
+### Security Considerations
+
+- **Data Privacy**: Ensure no PII or sensitive data is visible
+- **Authentication**: Use appropriate auth for external access
+- **Time Ranges**: Lock time ranges to prevent unexpected data access
+- **Variables**: Review variable defaults and allowed values
+- **Annotations**: Disable annotations if they contain sensitive info
+
+### Versioning Exported Dashboards
+
+```bash
+# Use git for version control
+git init dashboard-exports/
+cd dashboard-exports/
+
+# Export and commit
+curl -H "Authorization: Bearer ${API_KEY}" \
+  https://grafana.example.com/api/dashboards/uid/abc123 \
+  | jq .dashboard > my-dashboard.json
+
+git add my-dashboard.json
+git commit -m "Updated dashboard - added new panels"
+```
+
+## Troubleshooting
+
+### Shared Link Not Working
+
+- Verify dashboard permissions for the user
+- Check if dashboard UID is correct
+- Ensure time range parameters are valid
+- Confirm variables have valid values
+
+### Snapshot Creation Fails
+
+- Check timeout settings for slow queries
+- Verify snapshot storage is configured
+- Ensure panels render without errors
+- Review query permissions
+
+### Embed Not Displaying
+
+- Check CORS settings in Grafana config
+- Verify iframe permissions
+- Ensure dashboard is accessible
+- Check browser console for errors
+
+### Public Dashboard Not Accessible
+
+- Confirm public dashboards are enabled in config
+- Verify the access token is correct
+- Check that queries don't require authentication
+- Review data source permissions
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Dashboard Overview" href="/dashboards/overview" icon="tachometer-alt">
+    Learn about dashboard fundamentals
+  </Card>
+  <Card title="Variables" href="/dashboards/variables" icon="sliders">
+    Share dashboards with variable parameters
+  </Card>
+  <Card title="Permissions" href="/getting-started/user-management#dashboard-and-folder-permissions" icon="lock">
+    Configure advanced access controls
+  </Card>
+  <Card title="API Reference" href="/development/api/dashboards" icon="code">
+    Automate sharing with the Grafana API
+  </Card>
+</CardGroup>

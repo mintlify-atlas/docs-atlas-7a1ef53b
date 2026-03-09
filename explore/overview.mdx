@@ -1,0 +1,173 @@
+---
+title: Explore Overview
+description: Learn how to use Grafana Explore for ad-hoc queries and data investigation
+---
+
+# Explore Overview
+
+Explore is Grafana's query and investigation interface designed for ad-hoc data exploration. Unlike dashboards that are designed for visualization and monitoring, Explore provides a focused environment for investigating data, troubleshooting issues, and iterating on queries.
+
+## What is Explore?
+
+Explore provides an area for quick query iteration for any connected data source. Once you select a data source, it populates the query editor at the top, and when queries are executed, results are displayed in the main section below. The data source determines:
+
+- What kind of query editor is available
+- What result visualizations are supported (graphs, logs, traces, tables, etc.)
+- What supplementary features are enabled
+
+<Info>
+All state in Explore is managed via URL parameters, making it easy to share your investigations with team members by simply copying the URL.
+</Info>
+
+## Key Features
+
+### Split View
+
+Explore supports side-by-side split views, allowing you to:
+- Compare data from different data sources
+- Correlate metrics with logs
+- View the same query across different time ranges
+- Follow trace relationships across services
+
+<Tip>
+Use the Split button in the toolbar to open a second pane. Each pane maintains its own independent state.
+</Tip>
+
+### Multiple Visualizations
+
+Depending on your data source and query results, Explore automatically displays appropriate visualizations:
+
+- **Graph** - Time series metrics visualization
+- **Logs** - Structured log viewing with filtering and context
+- **Table** - Tabular data display
+- **Trace View** - Distributed tracing visualization
+- **Node Graph** - Service dependency visualization
+- **Flame Graph** - Performance profiling visualization
+- **Raw Prometheus** - Native Prometheus data format
+
+### Content Outline
+
+The content outline provides quick navigation between different result sections. Toggle it using the outline icon in the toolbar to:
+- Jump between different visualization types
+- See which visualizations have data
+- Quickly navigate large result sets
+
+## Getting Started
+
+### Accessing Explore
+
+1. Click the **Explore** icon in the left sidebar navigation
+2. Or navigate from a dashboard panel by clicking the panel title > **Explore**
+3. Or use the keyboard shortcut `Cmd/Ctrl + E` from any panel
+
+### Basic Workflow
+
+<Steps>
+  <Step title="Select a data source">
+    Choose your data source from the dropdown in the toolbar. Grafana supports Prometheus, Loki, Tempo, Jaeger, and many other data sources.
+  </Step>
+  
+  <Step title="Build your query">
+    Use the query editor to construct your query. Each data source provides its own query builder or editor interface.
+  </Step>
+  
+  <Step title="Set time range">
+    Select the time range for your query using the time picker in the toolbar.
+  </Step>
+  
+  <Step title="Run the query">
+    Click **Run query** or press `Shift + Enter` to execute your query.
+  </Step>
+  
+  <Step title="Analyze results">
+    Explore automatically displays appropriate visualizations based on your results. Use the content outline to navigate between different views.
+  </Step>
+</Steps>
+
+## Toolbar Actions
+
+The Explore toolbar provides several key actions:
+
+| Action | Description |
+|--------|-------------|
+| **Data source picker** | Select which data source to query |
+| **Time picker** | Set the time range for queries |
+| **Run query** | Execute the current queries (or cancel running queries) |
+| **Split** | Open a second Explore pane side-by-side |
+| **Share** | Generate a shortened URL to share your investigation |
+| **Outline** | Toggle the content outline panel |
+
+## Query Management
+
+### Multiple Queries
+
+You can add multiple queries to compare different metrics or data:
+
+1. Click **+ Add query** below the query editor
+2. Each query gets a unique reference ID (A, B, C, etc.)
+3. Results from all queries are combined in the visualizations
+
+<Warning>
+Some data sources (like tracing) may have limitations on displaying multiple query results simultaneously.
+</Warning>
+
+### Query History
+
+Explore maintains a history of your queries:
+
+1. Click the **Query history** button to open the history drawer
+2. Browse previous queries by data source and time
+3. Click any query to load it back into the editor
+4. Star frequently used queries for quick access
+
+## Live Tail
+
+For log data sources like Loki, Explore supports live tailing:
+
+1. Click the **Live** button in the toolbar
+2. New logs stream in real-time as they're ingested
+3. Use **Pause** to temporarily stop the stream while reviewing
+4. Click **Stop** to exit live mode
+
+## Data Links and Correlations
+
+Explore supports data links that connect related data across different sources:
+
+- Click on trace IDs in logs to view the corresponding trace
+- Follow service dependencies in node graphs
+- Jump from metrics to related logs
+- Navigate exemplars from Prometheus to traces
+
+<Info>
+Data links can be configured at the data source level or defined through Grafana's correlations feature.
+</Info>
+
+## Keyboard Shortcuts
+
+| Shortcut | Action |
+|----------|--------|
+| `Shift + Enter` | Run query |
+| `Cmd/Ctrl + K` | Focus data source picker |
+| `Esc` | Clear time selection / Close modals |
+
+## Next Steps
+
+<CardGroup cols={3}>
+  <Card title="Querying Metrics" icon="chart-line" href="./querying-metrics">
+    Learn how to query and visualize time-series metrics data
+  </Card>
+  
+  <Card title="Querying Logs" icon="file-lines" href="./querying-logs">
+    Explore log data with filtering, parsing, and context viewing
+  </Card>
+  
+  <Card title="Distributed Tracing" icon="diagram-project" href="./tracing">
+    Investigate distributed traces and service dependencies
+  </Card>
+</CardGroup>
+
+## Additional Resources
+
+- [Data Sources Documentation](/datasources)
+- [Dashboard Creation Guide](/dashboards)
+- [Query Variables](/variables)

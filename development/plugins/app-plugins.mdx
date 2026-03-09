@@ -1,0 +1,531 @@
+---
+title: App Plugin Development
+description: Build complete applications within Grafana with custom pages and workflows
+keywords:
+  - grafana
+  - app plugin
+  - development
+  - custom pages
+---
+
+# App Plugin Development
+
+App plugins allow you to create complete applications within Grafana, including custom pages, navigation, and bundled data sources or panels. This guide covers building app plugins.
+
+## Overview
+
+App plugins can include:
+- **Custom pages**: Full-page React applications
+- **Navigation items**: Custom menu entries
+- **Bundled plugins**: Include data source or panel plugins
+- **Dashboards**: Pre-built dashboards
+- **Backend components**: Server-side logic and APIs
+- **Plugin extensions**: Extend other plugins' functionality
+
+## Creating an App Plugin
+
+### Plugin Entry Point
+
+App plugins extend the `AppPlugin` class from `@grafana/data`:
+
+```typescript
+// module.tsx
+import { AppPlugin } from '@grafana/data';
+import { AppConfig } from './components/AppConfig';
+import { RootPage } from './pages/RootPage';
+
+export const plugin = new AppPlugin<{}>() // No settings needed
+  .setRootPage(RootPage)
+  .addConfigPage({
+    title: 'Configuration',
+    icon: 'cog',
+    body: AppConfig,
+    id: 'configuration',
+  });
+```
+
+### Root Page Component
+
+The root page handles routing and navigation:
+
+```typescript
+import React from 'react';
+import { AppRootProps } from '@grafana/data';
+import { Route, Routes } from 'react-router-dom';
+import { HomePage } from './HomePage';
+import { DetailsPage } from './DetailsPage';
+
+export const RootPage: React.FC<AppRootProps> = ({ path, meta }) => {
+  return (
+    <Routes>
+      <Route path="/" element={<HomePage />} />
+      <Route path="/details/:id" element={<DetailsPage />} />
+    </Routes>
+  );
+};
+```
+
+### Configuration Page
+
+Provide settings for your app:
+
+```typescript
+import React from 'react';
+import { AppPluginMeta, PluginConfigPageProps } from '@grafana/data';
+import { Button, Field, Input } from '@grafana/ui';
+
+interface AppSettings {
+  apiUrl?: string;
+  apiKey?: string;
+}
+
+export const AppConfig: React.FC<PluginConfigPageProps<AppPluginMeta<AppSettings>>> = ({
+  plugin,
+}) => {
+  const { enabled, jsonData, secureJsonFields } = plugin.meta;
+
+  const [settings, setSettings] = React.useState<AppSettings>({
+    apiUrl: jsonData?.apiUrl || '',
+  });
+
+  const onSave = async () => {
+    const response = await fetch(`/api/plugins/${plugin.meta.id}/settings`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        enabled,
+        jsonData: settings,
+        secureJsonData: { /* secure fields */ },
+      }),
+    });
+  };
+
+  return (
+    <div>
+      <Field label="API URL">
+        <Input
+          value={settings.apiUrl}
+          onChange={(e) => setSettings({ ...settings, apiUrl: e.currentTarget.value })}
+        />
+      </Field>
+      <Button onClick={onSave}>Save</Button>
+    </div>
+  );
+};
+```
+
+## Navigation Configuration
+
+Define navigation in `plugin.json`:
+
+```json
+{
+  "type": "app",
+  "name": "My Application",
+  "id": "myorg-myapp-app",
+  "includes": [
+    {
+      "type": "page",
+      "name": "Home",
+      "path": "/a/myorg-myapp-app",
+      "role": "Viewer",
+      "addToNav": true,
+      "defaultNav": true,
+      "icon": "home"
+    },
+    {
+      "type": "page",
+      "name": "Settings",
+      "path": "/a/myorg-myapp-app/settings",
+      "role": "Admin",
+      "addToNav": true,
+      "icon": "cog"
+    },
+    {
+      "type": "dashboard",
+      "name": "Overview Dashboard",
+      "path": "dashboards/overview.json",
+      "addToNav": true,
+      "uid": "myapp-overview"
+    }
+  ]
+}
+```
+
+### Include Types
+
+- `page`: Custom page route
+- `dashboard`: Bundled dashboard
+- `datasource`: Bundled data source plugin
+- `panel`: Bundled panel plugin
+
+### Include Properties
+
+- `name`: Display name in navigation
+- `path`: URL path or file path (for dashboards)
+- `role`: Minimum required role (`Viewer`, `Editor`, `Admin`)
+- `action`: RBAC action required (overrides role)
+- `addToNav`: Add to navigation menu
+- `defaultNav`: Make this the default page
+- `icon`: Icon name from `@grafana/ui`
+- `uid`: Dashboard UID (for dashboard includes)
+
+## Backend Implementation
+
+App plugins can include backend components for custom APIs:
+
+```go
+// pkg/plugin/app.go
+package plugin
+
+import (
+    "context"
+    "encoding/json"
+    "net/http"
+    "github.com/grafana/grafana-plugin-sdk-go/backend"
+)
+
+type App struct {
+    backend.CallResourceHandler
+}
+
+func NewApp() *App {
+    return &App{}
+}
+
+func (a *App) CallResource(ctx context.Context, req *backend.CallResourceRequest, sender backend.CallResourceResponseSender) error {
+    switch req.Path {
+    case "health":
+        return a.handleHealth(ctx, req, sender)
+    case "data":
+        return a.handleData(ctx, req, sender)
+    default:
+        return sender.Send(&backend.CallResourceResponse{
+            Status: http.StatusNotFound,
+        })
+    }
+}
+
+func (a *App) handleHealth(ctx context.Context, req *backend.CallResourceRequest, sender backend.CallResourceResponseSender) error {
+    body, _ := json.Marshal(map[string]string{"status": "ok"})
+    return sender.Send(&backend.CallResourceResponse{
+        Status: http.StatusOK,
+        Body:   body,
+    })
+}
+```
+
+## Frontend API Calls
+
+Call backend resources from the frontend:
+
+```typescript
+import { getBackendSrv } from '@grafana/runtime';
+
+export const fetchData = async () => {
+  const response = await getBackendSrv().fetch({
+    url: '/api/plugins/myorg-myapp-app/resources/data',
+    method: 'GET',
+  });
+  return response.data;
+};
+```
+
+## Plugin Extensions
+
+Extend other plugins' functionality:
+
+### Registering Extensions
+
+In `plugin.json`:
+
+```json
+{
+  "extensions": {
+    "addedLinks": [
+      {
+        "targets": ["grafana/dashboard/panel/menu"],
+        "title": "Open in My App",
+        "description": "View this panel in My Application"
+      }
+    ],
+    "addedComponents": [
+      {
+        "targets": ["grafana/explore/toolbar"],
+        "title": "Custom Toolbar Button",
+        "description": "Adds a custom button to Explore toolbar"
+      }
+    ],
+    "exposedComponents": [
+      {
+        "id": "myorg/custom-widget",
+        "title": "Custom Widget",
+        "description": "Reusable widget for other plugins"
+      }
+    ],
+    "extensionPoints": [
+      {
+        "id": "myorg/myapp/action",
+        "title": "My App Actions",
+        "description": "Extension point for custom actions"
+      }
+    ]
+  }
+}
+```
+
+### Implementing Extension Components
+
+```typescript
+import { usePluginLinks, usePluginComponents } from '@grafana/runtime';
+
+export const MyComponent = () => {
+  // Get extension links
+  const { links } = usePluginLinks({
+    extensionPointId: 'grafana/dashboard/panel/menu',
+  });
+
+  // Get extension components
+  const { components } = usePluginComponents({
+    extensionPointId: 'myorg/myapp/action',
+  });
+
+  return (
+    <div>
+      {components.map((Component, i) => (
+        <Component key={i} />
+      ))}
+    </div>
+  );
+};
+```
+
+## Role-Based Access Control
+
+Define custom roles and permissions:
+
+```json
+{
+  "roles": [
+    {
+      "role": {
+        "name": "My App Viewer",
+        "description": "Can view data in My App",
+        "permissions": [
+          {
+            "action": "myorg.myapp:read",
+            "scope": "myorg.myapp:*"
+          }
+        ]
+      },
+      "grants": ["Viewer"]
+    },
+    {
+      "role": {
+        "name": "My App Editor",
+        "description": "Can edit data in My App",
+        "permissions": [
+          {
+            "action": "myorg.myapp:write",
+            "scope": "myorg.myapp:*"
+          }
+        ]
+      },
+      "grants": ["Editor"]
+    }
+  ]
+}
+```
+
+## Bundling Other Plugins
+
+Include data source or panel plugins:
+
+```json
+{
+  "includes": [
+    {
+      "type": "datasource",
+      "name": "My App Data Source"
+    },
+    {
+      "type": "panel",
+      "name": "My App Panel"
+    }
+  ],
+  "dependencies": {
+    "grafanaVersion": ">=9.0.0",
+    "plugins": []
+  }
+}
+```
+
+## Plugin.json Configuration
+
+Complete app plugin configuration:
+
+```json
+{
+  "type": "app",
+  "name": "My Application",
+  "id": "myorg-myapp-app",
+  "info": {
+    "description": "Custom application for Grafana",
+    "author": {
+      "name": "My Organization",
+      "url": "https://example.com"
+    },
+    "keywords": ["app", "custom"],
+    "logos": {
+      "small": "img/logo.svg",
+      "large": "img/logo.svg"
+    },
+    "links": [
+      {
+        "name": "Documentation",
+        "url": "https://example.com/docs"
+      }
+    ],
+    "version": "1.0.0",
+    "updated": "2024-01-01"
+  },
+  "includes": [],
+  "dependencies": {
+    "grafanaVersion": ">=9.0.0",
+    "plugins": []
+  },
+  "backend": true,
+  "executable": "gpx_myorg_myapp",
+  "autoEnabled": false
+}
+```
+
+### Key Configuration Options
+
+- `autoEnabled`: Auto-enable plugin on installation
+- `backend`: Has backend component
+- `executable`: Backend binary name
+- `includes`: Bundled pages, dashboards, and plugins
+- `roles`: RBAC role definitions
+- `extensions`: Plugin extensions configuration
+
+## State Management
+
+Use React hooks and context for state:
+
+```typescript
+import React, { createContext, useContext, useState } from 'react';
+
+interface AppState {
+  data: any[];
+  loading: boolean;
+}
+
+const AppContext = createContext<AppState | undefined>(undefined);
+
+export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const [state, setState] = useState<AppState>({
+    data: [],
+    loading: false,
+  });
+
+  return <AppContext.Provider value={state}>{children}</AppContext.Provider>;
+};
+
+export const useAppState = () => {
+  const context = useContext(AppContext);
+  if (!context) {
+    throw new Error('useAppState must be used within AppProvider');
+  }
+  return context;
+};
+```
+
+## Routing
+
+Use React Router for navigation:
+
+```typescript
+import { useLocation, useNavigate } from 'react-router-dom';
+
+export const MyPage = () => {
+  const location = useLocation();
+  const navigate = useNavigate();
+
+  const goToDetails = (id: string) => {
+    navigate(`/a/myorg-myapp-app/details/${id}`);
+  };
+
+  return <button onClick={() => goToDetails('123')}>View Details</button>;
+};
+```
+
+## Best Practices
+
+1. **Follow Grafana conventions**: Use consistent URL paths (`/a/plugin-id/page`)
+2. **Implement proper RBAC**: Use roles and actions for access control
+3. **Handle plugin lifecycle**: Implement enable/disable functionality
+4. **Provide configuration UI**: Make setup easy for users
+5. **Bundle useful dashboards**: Include pre-built visualizations
+6. **Document extensions**: Clearly document extension points
+7. **Test thoroughly**: Test all pages and navigation paths
+8. **Support theming**: Use `@grafana/ui` components for theme compatibility
+
+## Common Patterns
+
+### Loading States
+
+```typescript
+import { LoadingPlaceholder } from '@grafana/ui';
+
+export const MyPage = () => {
+  const [loading, setLoading] = useState(true);
+
+  if (loading) {
+    return <LoadingPlaceholder text="Loading..." />;
+  }
+
+  return <div>Content</div>;
+};
+```
+
+### Error Handling
+
+```typescript
+import { Alert } from '@grafana/ui';
+
+export const MyPage = () => {
+  const [error, setError] = useState<string | null>(null);
+
+  if (error) {
+    return <Alert title="Error" severity="error">{error}</Alert>;
+  }
+
+  return <div>Content</div>;
+};
+```
+
+### Data Fetching
+
+```typescript
+import { useAsync } from 'react-use';
+import { getBackendSrv } from '@grafana/runtime';
+
+export const MyPage = () => {
+  const { value, loading, error } = useAsync(async () => {
+    const response = await getBackendSrv().fetch({
+      url: '/api/plugins/myorg-myapp-app/resources/data',
+    });
+    return response.data;
+  });
+
+  // Handle loading and error states
+};
+```
+
+## Resources
+
+- [Build an app plugin tutorial](https://grafana.com/tutorials/build-an-app-plugin/)
+- [Plugin examples](https://github.com/grafana/grafana-plugin-examples)
+- [Grafana UI components](https://developers.grafana.com/ui/)
+- Source: `pkg/plugins/` and example app plugins in Grafana repository

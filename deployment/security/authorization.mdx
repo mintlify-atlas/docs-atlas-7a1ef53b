@@ -1,0 +1,630 @@
+---
+title: Authorization
+description: Configure role-based access control (RBAC) and permissions in Grafana
+---
+
+Grafana uses a comprehensive role-based access control (RBAC) system to manage user permissions and access to resources. This guide covers the authorization architecture and configuration.
+
+## Overview
+
+Grafana's authorization system is implemented in `pkg/services/accesscontrol/` and provides:
+
+- Role-based access control (RBAC)
+- Fine-grained permissions on resources
+- Built-in roles (Viewer, Editor, Admin, Grafana Admin)
+- Custom role creation
+- Team-based permissions
+- Resource-specific permissions
+
+## Core Concepts
+
+### Permissions
+
+A permission consists of an action and a scope:
+
+```go
+type Permission struct {
+    Action string  // e.g., "dashboards:read"
+    Scope  string  // e.g., "dashboards:uid:abc123" or "dashboards:*"
+}
+```
+
+Reference: `pkg/services/accesscontrol/models.go:206-218`
+
+**Actions** define what operation can be performed:
+- `dashboards:read` - View dashboards
+- `dashboards:write` - Edit dashboards
+- `dashboards:delete` - Delete dashboards
+- `users:read` - View users
+- `datasources:explore` - Use Explore feature
+
+**Scopes** define where the action applies:
+- `dashboards:*` - All dashboards
+- `dashboards:uid:abc123` - Specific dashboard
+- `folders:uid:xyz789` - Specific folder
+- `datasources:id:1` - Specific datasource
+
+### Roles
+
+Roles are collections of permissions:
+
+```go
+type Role struct {
+    ID          int64
+    OrgID       int64   // 0 for global roles
+    UID         string
+    Name        string
+    DisplayName string
+    Description string
+    Group       string
+    Hidden      bool
+    Permissions []Permission
+}
+```
+
+Reference: `pkg/services/accesscontrol/models.go:36-49`
+
+#### Role Types
+
+1. **Built-in Roles**: Predefined organization roles
+   - Viewer
+   - Editor  
+   - Admin
+
+2. **Grafana Admin**: Super admin with global permissions
+
+3. **Fixed Roles**: System-defined roles (prefixed with `fixed:`)
+
+4. **Custom Roles**: User-defined roles for specific needs
+
+5. **Managed Roles**: Auto-generated roles for resource permissions
+
+### Evaluators
+
+Evaluators combine permissions with logical operators:
+
+```go
+// Single permission
+EvalPermission("dashboards:read", "dashboards:uid:abc123")
+
+// Multiple permissions (AND)
+EvalAll(
+    EvalPermission("dashboards:read"),
+    EvalPermission("dashboards:write"),
+)
+
+// Multiple permissions (OR)
+EvalAny(
+    EvalPermission("dashboards:read"),
+    EvalPermission("folders:read"),
+)
+```
+
+Reference: `pkg/services/accesscontrol/evaluator.go`
+
+## Built-in Roles
+
+### Organization Roles
+
+Grafana has three built-in organization roles with different permission levels:
+
+#### Viewer
+
+- View dashboards and panels
+- View datasources (not query)
+- View playlists
+- View annotations
+
+#### Editor
+
+- All Viewer permissions
+- Create and edit dashboards
+- Create and edit folders
+- Create and edit playlists
+- Create annotations
+
+#### Admin
+
+- All Editor permissions
+- Add and edit datasources
+- Add and edit users to organization
+- Manage organization settings
+- Configure teams
+- Manage plugins
+- View and edit API keys
+
+### Grafana Admin
+
+Grafana Admins have super admin privileges across all organizations:
+
+- All organization permissions in all orgs
+- Create and manage organizations
+- Create and manage users globally
+- Access server admin pages
+- Manage Grafana configuration
+- View usage statistics
+
+Constant: `accesscontrol.RoleGrafanaAdmin` (line 345)
+
+Reference: `pkg/services/accesscontrol/models.go:345`
+
+## Access Control Service
+
+The main access control interface provides permission evaluation and management.
+
+### Core Interface
+
+```go
+type AccessControl interface {
+    // Evaluate evaluates access to resources
+    Evaluate(ctx context.Context, user identity.Requester, evaluator Evaluator) (bool, error)
+    
+    // RegisterScopeAttributeResolver registers scope resolvers
+    RegisterScopeAttributeResolver(prefix string, resolver ScopeAttributeResolver)
+    
+    // WithoutResolvers creates an AccessControl without resolvers
+    WithoutResolvers() AccessControl
+    
+    // InvalidateResolverCache clears cached scope resolutions
+    InvalidateResolverCache(orgID int64, scope string)
+}
+```
+
+Reference: `pkg/services/accesscontrol/accesscontrol.go:22-34`
+
+### Permission Evaluation
+
+Evaluating permissions in middleware:
+
+```go
+// Check if user has access
+hasAccess := ac.HasAccess(accessControl, c)
+if !hasAccess(EvalPermission("dashboards:read", "dashboards:uid:123")) {
+    accessForbidden(c)
+    return
+}
+```
+
+Reference: `pkg/services/accesscontrol/accesscontrol.go:200-210`
+
+## User Permissions
+
+### Getting User Permissions
+
+```go
+type Service interface {
+    // Get user permissions
+    GetUserPermissions(ctx context.Context, user identity.Requester, 
+        options Options) ([]Permission, error)
+    
+    // Search user permissions by action
+    SearchUserPermissions(ctx context.Context, orgID int64, 
+        filterOptions SearchOptions) ([]Permission, error)
+    
+    // Clear permission cache for user
+    ClearUserPermissionCache(user identity.Requester)
+}
+```
+
+Reference: `pkg/services/accesscontrol/accesscontrol.go:36-66`
+
+### Permission Caching
+
+Permissions are cached for performance:
+
+```ini
+[rbac]
+# Enable permission caching
+permission_cache = true
+```
+
+Reference: `conf/defaults.ini:1126-1127`
+
+## Resource Permissions
+
+Resource-specific permissions control access to individual resources.
+
+### Permission Service
+
+```go
+type PermissionsService interface {
+    // Get permissions for a resource
+    GetPermissions(ctx context.Context, user identity.Requester, 
+        resourceID string) ([]ResourcePermission, error)
+    
+    // Set user permission on resource
+    SetUserPermission(ctx context.Context, orgID int64, user User, 
+        resourceID, permission string) (*ResourcePermission, error)
+    
+    // Set team permission on resource
+    SetTeamPermission(ctx context.Context, orgID, teamID int64, 
+        resourceID, permission string) (*ResourcePermission, error)
+    
+    // Set built-in role permission
+    SetBuiltInRolePermission(ctx context.Context, orgID int64, 
+        builtInRole string, resourceID, permission string) (*ResourcePermission, error)
+    
+    // Delete all permissions for resource
+    DeleteResourcePermissions(ctx context.Context, orgID int64, 
+        resourceID string) error
+}
+```
+
+Reference: `pkg/services/accesscontrol/accesscontrol.go:150-165`
+
+### Resource Types with Permissions
+
+- **Dashboards**: `DashboardPermissionsService`
+- **Folders**: `FolderPermissionsService`
+- **Datasources**: `DatasourcePermissionsService`
+- **Teams**: `TeamPermissionsService`
+- **Service Accounts**: `ServiceAccountPermissionsService`
+- **Alerting Receivers**: `ReceiverPermissionsService`
+
+Reference: `pkg/services/accesscontrol/accesscontrol.go:128-148`
+
+## Middleware
+
+Access control middleware enforces permissions on routes.
+
+### Basic Middleware
+
+```go
+// Require specific permission
+ac.Middleware(accessControl)(
+    ac.EvalPermission("dashboards:read"),
+)
+
+// Require role
+RoleAuth(org.RoleAdmin)
+
+// Require signed in
+Auth(&AuthOptions{ReqSignedIn: true})
+
+// Require Grafana Admin
+Auth(&AuthOptions{ReqGrafanaAdmin: true})
+```
+
+Reference: `pkg/services/accesscontrol/middleware.go`
+
+### Route Protection
+
+Example from `pkg/middleware/auth.go`:
+
+```go
+// Require authentication
+func Auth(options *AuthOptions) web.Handler {
+    return func(c *contextmodel.ReqContext) {
+        if !c.IsSignedIn && options.ReqSignedIn {
+            notAuthorized(c)
+            return
+        }
+        
+        if !c.IsGrafanaAdmin && options.ReqGrafanaAdmin {
+            accessForbidden(c)
+            return
+        }
+    }
+}
+```
+
+Reference: `pkg/middleware/auth.go:202-233`
+
+## Actions and Scopes
+
+### Common Actions
+
+#### User Actions
+
+```go
+const (
+    ActionUsersRead              = "users:read"
+    ActionUsersWrite             = "users:write"
+    ActionUsersDelete            = "users:delete"
+    ActionUsersCreate            = "users:create"
+    ActionUsersEnable            = "users:enable"
+    ActionUsersDisable           = "users:disable"
+    ActionUsersPasswordUpdate    = "users.password:write"
+    ActionUsersPermissionsUpdate = "users.permissions:write"
+    ActionUsersPermissionsRead   = "users.permissions:read"
+)
+```
+
+Reference: `pkg/services/accesscontrol/models.go:347-368`
+
+#### Organization Actions
+
+```go
+const (
+    ActionOrgsRead             = "orgs:read"
+    ActionOrgsWrite            = "orgs:write"
+    ActionOrgsDelete           = "orgs:delete"
+    ActionOrgsCreate           = "orgs:create"
+    ActionOrgUsersRead         = "org.users:read"
+    ActionOrgUsersAdd          = "org.users:add"
+    ActionOrgUsersRemove       = "org.users:remove"
+    ActionOrgUsersWrite        = "org.users:write"
+)
+```
+
+Reference: `pkg/services/accesscontrol/models.go:370-383`
+
+#### LDAP Actions
+
+```go
+const (
+    ActionLDAPUsersRead    = "ldap.user:read"
+    ActionLDAPUsersSync    = "ldap.user:sync"
+    ActionLDAPStatusRead   = "ldap.status:read"
+    ActionLDAPConfigReload = "ldap.config:reload"
+)
+```
+
+Reference: `pkg/services/accesscontrol/models.go:385-389`
+
+#### Team Actions
+
+```go
+const (
+    ActionTeamsCreate           = "teams:create"
+    ActionTeamsDelete           = "teams:delete"
+    ActionTeamsRead             = "teams:read"
+    ActionTeamsWrite            = "teams:write"
+    ActionTeamsPermissionsRead  = "teams.permissions:read"
+    ActionTeamsPermissionsWrite = "teams.permissions:write"
+)
+```
+
+Reference: `pkg/services/accesscontrol/models.go:413-419`
+
+### Common Scopes
+
+```go
+const (
+    // Global scopes
+    GlobalOrgID         = 0
+    ScopeGlobalUsersAll = "global.users:*"
+    
+    // User scopes
+    ScopeUsersAll    = "users:*"
+    ScopeUsersPrefix = "users:id:"
+    
+    // Team scopes
+    ScopeTeamsAll = "teams:*"
+    
+    // Settings scopes
+    ScopeSettingsAll  = "settings:*"
+    ScopeSettingsSAML = "settings:auth.saml:*"
+    ScopeSettingsSCIM = "settings:auth.scim:*"
+)
+```
+
+Reference: `pkg/services/accesscontrol/models.go:341-422`
+
+### Scope Patterns
+
+Scopes support wildcards for flexible permission matching:
+
+- `dashboards:*` - All dashboards
+- `dashboards:uid:*` - All dashboards by UID
+- `folders:*` - All folders
+- `datasources:id:*` - All datasources
+
+## Fixed Roles
+
+Fixed roles are system-defined roles that map to built-in functionality.
+
+### Declaring Fixed Roles
+
+```go
+type RoleRegistration struct {
+    Role    RoleDTO      // Role definition
+    Grants  []string     // Built-in roles to grant this role to
+    Exclude []string     // Built-in roles to exclude
+}
+
+// Example: Register a custom fixed role
+service.DeclareFixedRoles(
+    RoleRegistration{
+        Role: RoleDTO{
+            Name:        "fixed:datasources:reader",
+            DisplayName: "Datasource Reader",
+            Description: "Read datasource configuration",
+            Permissions: []Permission{
+                {Action: "datasources:read", Scope: "datasources:*"},
+            },
+        },
+        Grants: []string{string(org.RoleEditor), string(org.RoleAdmin)},
+    },
+)
+```
+
+Reference: `pkg/services/accesscontrol/models.go:27-33`
+
+## External Service Roles
+
+External services can have custom roles assigned to their service accounts.
+
+### Creating External Service Roles
+
+```go
+type SaveExternalServiceRoleCommand struct {
+    AssignmentOrgID   int64
+    ExternalServiceID string
+    ServiceAccountID  int64
+    Permissions       []Permission
+}
+
+// Create role for external service
+err := acService.SaveExternalServiceRole(ctx, SaveExternalServiceRoleCommand{
+    AssignmentOrgID:   1,
+    ExternalServiceID: "my-service",
+    ServiceAccountID:  serviceAccountID,
+    Permissions: []Permission{
+        {Action: "dashboards:read", Scope: "dashboards:*"},
+        {Action: "datasources:query", Scope: "datasources:*"},
+    },
+})
+```
+
+Reference: `pkg/services/accesscontrol/models.go:299-338`
+
+## Team Permissions
+
+Teams allow grouping users and assigning permissions collectively.
+
+### Team-based Access
+
+```go
+// Set team permission on dashboard
+service.SetTeamPermission(ctx, orgID, teamID, dashboardUID, "View")
+
+// Get team permissions
+permissions, err := service.GetPermissions(ctx, user, dashboardUID)
+```
+
+### Team Access Evaluator
+
+Protects team configuration pages:
+
+```go
+// Require team access (create OR read+write)
+var TeamsAccessEvaluator = EvalAny(
+    EvalPermission(ActionTeamsCreate),
+    EvalAll(
+        EvalPermission(ActionTeamsRead),
+        EvalAny(
+            EvalPermission(ActionTeamsWrite),
+            EvalPermission(ActionTeamsPermissionsWrite),
+        ),
+    ),
+)
+```
+
+Reference: `pkg/services/accesscontrol/models.go:572-582`
+
+## Configuration
+
+### RBAC Settings
+
+```ini
+[rbac]
+# Enable permission caching
+permission_cache = true
+
+# Reset basic role permissions on startup (warning: resets on every boot)
+reset_basic_roles = false
+
+# Validate permissions when creating/updating roles
+permission_validation_enabled = true
+```
+
+Reference: `conf/defaults.ini:1124-1134`
+
+## Best Practices
+
+### 1. Use Built-in Roles
+
+Leverage built-in roles (Viewer, Editor, Admin) for common access patterns before creating custom roles.
+
+### 2. Principle of Least Privilege
+
+Grant minimum necessary permissions:
+
+```go
+// Good: Specific scope
+Permission{Action: "dashboards:read", Scope: "dashboards:uid:abc123"}
+
+// Avoid: Overly broad scope
+Permission{Action: "dashboards:write", Scope: "dashboards:*"}
+```
+
+### 3. Use Teams for Group Management
+
+Assign permissions to teams rather than individual users for easier management.
+
+### 4. Cache Invalidation
+
+Clear permission cache after role changes:
+
+```go
+acService.ClearUserPermissionCache(user)
+```
+
+### 5. Scope Validation
+
+Validate scope format:
+
+```go
+// Valid scopes
+ValidateScope("dashboards:uid:abc123")  // true
+ValidateScope("dashboards:*")           // true
+ValidateScope("dashboards:uid:*")       // true
+
+// Invalid scopes
+ValidateScope("dashboards*")            // false
+ValidateScope("dashboards:*abc")        // false
+```
+
+Reference: `pkg/services/accesscontrol/accesscontrol.go:378-388`
+
+### 6. Check Global Permissions
+
+For cross-organization access:
+
+```go
+hasGlobalAccess := HasGlobalAccess(ac, authnService, c)
+if !hasGlobalAccess(evaluator) {
+    accessForbidden(c)
+}
+```
+
+Reference: `pkg/services/accesscontrol/accesscontrol.go:173-198`
+
+## Troubleshooting
+
+### Permission Denied Issues
+
+1. **Check User Roles**: Verify user has correct organization role
+   ```bash
+   # Via API
+   GET /api/user
+   GET /api/user/orgs
+   ```
+
+2. **Check Permissions**: View user's effective permissions
+   ```bash
+   GET /api/access-control/user/permissions
+   ```
+
+3. **Clear Cache**: Permissions may be cached
+   ```ini
+   [rbac]
+   permission_cache = false
+   ```
+
+### Debug Logging
+
+Enable access control debugging:
+
+```ini
+[log]
+filters = accesscontrol:debug
+```
+
+### Permission Evaluation
+
+Trace permission evaluation:
+
+```go
+// The evaluator logs evaluation steps
+hasAccess, err := ac.Evaluate(ctx, user, evaluator)
+// Check logs for evaluation details
+```
+
+## Related Topics
+
+- [Authentication](/deployment/security/authentication) - User authentication methods
+- [Teams](/administration/teams) - Team management
+- [Service Accounts](/administration/service-accounts) - Machine-to-machine authentication
+- [Security Best Practices](/deployment/security/best-practices) - Comprehensive security guide

@@ -1,0 +1,167 @@
+---
+title: Panels Overview
+description: Overview of visualization panels in Grafana
+---
+
+Grafana provides a rich set of visualization panels to display your data in different formats. Each panel type is optimized for specific use cases and data presentation needs.
+
+## Available Panel Types
+
+Grafana includes built-in panels for time series data, tabular data, statistical values, and many other visualization types.
+
+### Time Series Panels
+
+- **Time Series (Graph)** - Display data as lines, bars, or points over time
+- **State Timeline** - Visualize discrete state changes over time
+- **Status History** - Show status changes in a compact format
+- **Heatmap** - Display time series data as a heat map
+
+### Single Stat Panels
+
+- **Stat** - Show a single value with optional sparkline
+- **Gauge** - Display values with radial or linear gauges
+- **Bar Gauge** - Show values as horizontal or vertical bars
+
+### Data Display Panels
+
+- **Table** - Display data in tabular format with rich cell options
+- **Logs** - Visualize log data with search and filtering
+- **Bar Chart** - Create bar charts for categorical data
+- **Pie Chart** - Show proportional data
+
+### Specialized Panels
+
+- **Geomap** - Display data on geographic maps
+- **Canvas** - Create custom visualizations with drag-and-drop elements
+- **Node Graph** - Visualize directed graphs and networks
+- **Flame Graph** - Display profiling and trace data
+
+## Panel Architecture
+
+All Grafana panels are built using the `PanelPlugin` API from `@grafana/data`:
+
+```typescript
+import { PanelPlugin } from '@grafana/data';
+
+export const plugin = new PanelPlugin<Options, FieldConfig>(PanelComponent)
+  .useFieldConfig()
+  .setPanelOptions((builder) => {
+    // Configure panel options
+  });
+```
+
+## Panel Configuration
+
+Panels support two types of configuration:
+
+### Panel Options
+
+Panel-wide settings that affect the entire visualization:
+
+- Display modes
+- Layout options
+- Legend configuration
+- Tooltip settings
+
+### Field Config
+
+Per-field settings that can be overridden for individual series:
+
+- Colors and thresholds
+- Units and decimals
+- Min/max values
+- Custom display options
+
+## Common Features
+
+### Data Support
+
+Most panels support:
+
+- **Annotations** - Event markers and regions
+- **Alert States** - Visual indicators for alert conditions
+- **Exemplars** - Sample data points with trace links
+- **Time Zones** - Configurable time zone display
+
+### Interactivity
+
+- **Tooltips** - Hover information with multiple display modes
+- **Legends** - Click to show/hide series, with sorting options
+- **Zoom** - Time range selection on time series panels
+- **Data Links** - Clickable links to dashboards or external URLs
+
+## Panel JSON Structure
+
+Panels are stored in dashboard JSON with this structure:
+
+```json
+{
+  "type": "timeseries",
+  "title": "Panel Title",
+  "gridPos": {
+    "x": 0,
+    "y": 0,
+    "w": 12,
+    "h": 8
+  },
+  "targets": [
+    {
+      "datasource": { "type": "prometheus", "uid": "abc123" },
+      "expr": "up"
+    }
+  ],
+  "options": {
+    // Panel-specific options
+  },
+  "fieldConfig": {
+    "defaults": {
+      // Default field configuration
+    },
+    "overrides": [
+      // Field-specific overrides
+    ]
+  }
+}
+```
+
+<Note>
+Panel types are identified by their plugin ID (e.g., `timeseries`, `table`, `stat`, `gauge`).
+</Note>
+
+## Plugin System
+
+All built-in panels are located in `public/app/plugins/panel/`. Each panel is a TypeScript module with:
+
+- `module.tsx` - Plugin registration and configuration
+- `panelcfg.gen.ts` - Generated TypeScript types from CUE schemas
+- Panel component implementation
+- Options editors and custom controls
+
+## Migration and Compatibility
+
+Panels support migration handlers for upgrading from older versions:
+
+```typescript
+export const plugin = new PanelPlugin<Options>(PanelComponent)
+  .setMigrationHandler(migrationHandler)
+  .setPanelChangeHandler(changeHandler);
+```
+
+This ensures dashboards created in older Grafana versions continue to work with updated panel implementations.
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Graph Panel" icon="chart-line" href="/visualization/graph-panel">
+    Learn about the time series visualization panel
+  </Card>
+  <Card title="Table Panel" icon="table" href="/visualization/table-panel">
+    Explore tabular data display options
+  </Card>
+  <Card title="Stat Panel" icon="gauge" href="/visualization/stat-panel">
+    Display single values with rich formatting
+  </Card>
+  <Card title="Gauge Panel" icon="tachometer" href="/visualization/gauge-panel">
+    Visualize values with gauges and bars
+  </Card>
+</CardGroup>

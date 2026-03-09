@@ -1,0 +1,460 @@
+---
+title: Publishing Plugins
+description: Learn how to sign, publish, and distribute Grafana plugins
+keywords:
+  - grafana
+  - plugin
+  - publishing
+  - signing
+  - distribution
+---
+
+# Publishing Plugins
+
+This guide covers the process of signing, packaging, and publishing Grafana plugins to make them available to the community or within your organization.
+
+## Plugin Signing
+
+Grafana requires plugins to be signed to verify their authenticity and integrity. The signing process creates a `MANIFEST.txt` file that contains checksums of all plugin files.
+
+### Signature Levels
+
+Grafana supports different signature levels:
+
+- **Grafana**: Official plugins developed by Grafana Labs
+- **Commercial**: Commercial plugins from verified partners
+- **Community**: Community plugins verified by Grafana
+- **Private**: Private plugins for internal organizational use
+- **Private Glob**: Private plugins with wildcard matching
+
+### Signature Status
+
+When loading plugins, Grafana checks the signature status:
+
+- `internal`: Core plugin, no signature required (e.g., built-in data sources)
+- `valid`: Plugin signature is valid and content matches
+- `invalid`: Signature verification failed
+- `modified`: Valid signature but plugin content has been modified
+- `unsigned`: No signature file present
+
+From `pkg/plugins/models.go`:
+
+```go
+const (
+    SignatureStatusInternal SignatureStatus = "internal" // core plugin, no signature
+    SignatureStatusValid    SignatureStatus = "valid"    // signed and accurate MANIFEST
+    SignatureStatusInvalid  SignatureStatus = "invalid"  // invalid signature
+    SignatureStatusModified SignatureStatus = "modified" // valid signature, but content mismatch
+    SignatureStatusUnsigned SignatureStatus = "unsigned" // no MANIFEST file
+)
+```
+
+## Signing Your Plugin
+
+### Prerequisites
+
+1. **Create a Grafana Cloud account**: Required for plugin signing
+2. **Generate an access policy token**: From Grafana Cloud portal
+3. **Install @grafana/sign-plugin**: Plugin signing tool
+
+```bash
+npm install -g @grafana/sign-plugin
+```
+
+### Signing Process
+
+1. **Build your plugin**:
+
+```bash
+yarn build
+```
+
+2. **Sign the plugin**:
+
+```bash
+export GRAFANA_ACCESS_POLICY_TOKEN=<your-token>
+npx @grafana/sign-plugin
+```
+
+This creates a `MANIFEST.txt` file in your plugin directory.
+
+3. **Verify the signature**:
+
+```bash
+cat dist/MANIFEST.txt
+```
+
+The manifest contains:
+- Plugin metadata
+- File checksums (SHA256)
+- Signature information
+- Timestamp
+
+### Private Plugins
+
+For internal/private plugins, configure Grafana to allow unsigned plugins:
+
+```ini
+# grafana.ini
+[plugins]
+allow_loading_unsigned_plugins = myorg-myplugin-datasource,myorg-anotherplugin-panel
+```
+
+Or use environment variable:
+
+```bash
+GF_PLUGINS_ALLOW_LOADING_UNSIGNED_PLUGINS=myorg-myplugin-datasource
+```
+
+**Security Note**: Only allow unsigned plugins from trusted sources.
+
+## Plugin Packaging
+
+### Directory Structure
+
+A complete plugin package:
+
+```
+myorg-myplugin-datasource/
+├── dist/
+│   ├── module.js              # Compiled frontend code
+│   ├── module.js.map
+│   ├── img/
+│   │   └── logo.svg
+│   └── dashboards/            # Optional: bundled dashboards
+│       └── overview.json
+├── gpx_myorg_myplugin_linux_amd64   # Backend binary (Linux)
+├── gpx_myorg_myplugin_darwin_amd64  # Backend binary (macOS)
+├── gpx_myorg_myplugin_windows_amd64.exe  # Backend binary (Windows)
+├── plugin.json                # Plugin metadata
+├── MANIFEST.txt               # Signature file
+├── README.md                  # Documentation
+├── CHANGELOG.md               # Version history
+└── LICENSE                    # License file
+```
+
+### Backend Binaries
+
+For backend plugins, include binaries for all supported platforms:
+
+- Linux: `gpx_<plugin-id>_linux_amd64`
+- macOS (Intel): `gpx_<plugin-id>_darwin_amd64`
+- macOS (ARM): `gpx_<plugin-id>_darwin_arm64`
+- Windows: `gpx_<plugin-id>_windows_amd64.exe`
+
+Build using Mage or the plugin SDK:
+
+```bash
+mage -v buildAll
+```
+
+### Creating the Archive
+
+Create a ZIP archive:
+
+```bash
+cd dist
+zip -r myorg-myplugin-datasource-1.0.0.zip myorg-myplugin-datasource/
+```
+
+The archive should:
+- Be named `<plugin-id>-<version>.zip`
+- Contain a single root directory with the plugin ID
+- Include all necessary files and binaries
+
+## Publishing to Grafana Plugin Catalog
+
+### Requirements
+
+1. **Open source license**: Plugin must be open source (Apache 2.0, MIT, etc.)
+2. **Public repository**: Code hosted on GitHub, GitLab, or similar
+3. **README.md**: Comprehensive documentation
+4. **CHANGELOG.md**: Version history
+5. **Valid signature**: Plugin must be signed
+6. **Working plugin**: Thoroughly tested
+
+### Submission Process
+
+1. **Create a release on GitHub**:
+
+```bash
+git tag -a v1.0.0 -m "Release version 1.0.0"
+git push origin v1.0.0
+```
+
+2. **Attach the signed ZIP archive** to the GitHub release
+
+3. **Submit to Grafana**:
+   - Go to [grafana.com/plugins](https://grafana.com/plugins)
+   - Click "Submit a plugin"
+   - Fill out the submission form
+   - Provide plugin details and repository URL
+
+4. **Review process**:
+   - Grafana team reviews the plugin
+   - May request changes or improvements
+   - Approval typically takes 1-2 weeks
+
+5. **Publication**:
+   - Once approved, plugin appears in the catalog
+   - Available for installation via Grafana UI or CLI
+
+### Plugin Metadata
+
+Ensure `plugin.json` has complete information:
+
+```json
+{
+  "type": "datasource",
+  "name": "My Data Source",
+  "id": "myorg-mydatasource-datasource",
+  "info": {
+    "description": "Connect to MyService for data visualization",
+    "author": {
+      "name": "My Organization",
+      "url": "https://github.com/myorg"
+    },
+    "keywords": ["datasource", "myservice", "metrics"],
+    "logos": {
+      "small": "img/logo.svg",
+      "large": "img/logo.svg"
+    },
+    "links": [
+      {
+        "name": "Website",
+        "url": "https://myorg.com"
+      },
+      {
+        "name": "Documentation",
+        "url": "https://github.com/myorg/grafana-mydatasource-datasource/blob/main/README.md"
+      },
+      {
+        "name": "GitHub",
+        "url": "https://github.com/myorg/grafana-mydatasource-datasource"
+      },
+      {
+        "name": "License",
+        "url": "https://github.com/myorg/grafana-mydatasource-datasource/blob/main/LICENSE"
+      }
+    ],
+    "screenshots": [
+      {
+        "name": "Query Editor",
+        "path": "img/screenshot-query-editor.png"
+      },
+      {
+        "name": "Dashboard",
+        "path": "img/screenshot-dashboard.png"
+      }
+    ],
+    "version": "1.0.0",
+    "updated": "2024-01-01"
+  },
+  "dependencies": {
+    "grafanaVersion": ">=9.0.0",
+    "plugins": []
+  }
+}
+```
+
+## Private Plugin Distribution
+
+### Internal Plugin Repository
+
+For private/enterprise plugins, set up an internal repository:
+
+1. **Host plugin files** on internal server or S3
+2. **Configure plugin repository** in Grafana:
+
+```ini
+# grafana.ini
+[plugin.admin]
+repo_url = https://plugins.internal.company.com
+```
+
+3. **Serve plugin catalog JSON**:
+
+```json
+{
+  "plugins": [
+    {
+      "id": "myorg-internal-datasource",
+      "type": "datasource",
+      "name": "Internal Data Source",
+      "version": "1.0.0",
+      "url": "https://plugins.internal.company.com/myorg-internal-datasource-1.0.0.zip"
+    }
+  ]
+}
+```
+
+### Manual Installation
+
+For ad-hoc distribution:
+
+1. **Copy plugin to Grafana plugins directory**:
+
+```bash
+cp -r myorg-myplugin-datasource /var/lib/grafana/plugins/
+```
+
+2. **Restart Grafana**:
+
+```bash
+sudo systemctl restart grafana-server
+```
+
+3. **Verify installation**:
+
+```bash
+grafana-cli plugins ls
+```
+
+## Plugin Updates
+
+### Version Management
+
+Follow semantic versioning (SemVer):
+- **Major** (1.0.0 → 2.0.0): Breaking changes
+- **Minor** (1.0.0 → 1.1.0): New features, backward compatible
+- **Patch** (1.0.0 → 1.0.1): Bug fixes
+
+### Update Process
+
+1. **Update version** in `package.json` and `plugin.json`
+2. **Document changes** in `CHANGELOG.md`
+3. **Build and sign** the new version
+4. **Create GitHub release** with new tag
+5. **Update plugin catalog** (automatic for published plugins)
+
+### Migration Handlers
+
+Handle breaking changes with migration code:
+
+```typescript
+// For panel plugins
+import { PanelMigrationHandler } from '@grafana/data';
+
+const migrate: PanelMigrationHandler<Options> = (panel) => {
+  const version = panel.pluginVersion || '1.0.0';
+  
+  // Migrate from v1 to v2
+  if (semver.lt(version, '2.0.0')) {
+    return {
+      ...panel.options,
+      newOption: convertOldOption(panel.options.oldOption),
+    };
+  }
+  
+  return panel.options;
+};
+```
+
+## Plugin Installation
+
+Users can install plugins via:
+
+### Grafana UI
+
+1. Navigate to **Configuration** → **Plugins**
+2. Search for the plugin
+3. Click **Install**
+
+### Grafana CLI
+
+```bash
+# Install from catalog
+grafana-cli plugins install myorg-myplugin-datasource
+
+# Install specific version
+grafana-cli plugins install myorg-myplugin-datasource 1.0.0
+
+# Install from URL
+grafana-cli --pluginUrl https://example.com/plugin.zip plugins install myorg-myplugin-datasource
+```
+
+### Docker
+
+```dockerfile
+FROM grafana/grafana:latest
+
+ENV GF_INSTALL_PLUGINS="myorg-myplugin-datasource"
+
+# Or install from URL
+RUN grafana-cli --pluginUrl https://example.com/plugin.zip plugins install myorg-myplugin-datasource
+```
+
+## Best Practices
+
+### Documentation
+
+1. **Comprehensive README**: Installation, configuration, usage examples
+2. **Screenshots**: Show query editor, config, and visualizations
+3. **Changelog**: Document all changes between versions
+4. **License**: Include appropriate open source license
+5. **Contributing guidelines**: If accepting contributions
+
+### Quality Assurance
+
+1. **Test thoroughly**: All features across Grafana versions
+2. **Check compatibility**: Test with minimum required Grafana version
+3. **Performance**: Optimize queries and rendering
+4. **Error handling**: Graceful degradation and error messages
+5. **Security**: Sanitize inputs, validate data
+
+### Versioning
+
+1. **Follow SemVer**: Major.Minor.Patch versioning
+2. **Update CHANGELOG**: Document all changes
+3. **Tag releases**: Use git tags for versions
+4. **Backward compatibility**: Avoid breaking changes when possible
+5. **Deprecation warnings**: Warn before removing features
+
+### Support
+
+1. **Issue tracking**: Use GitHub Issues or similar
+2. **Community forum**: Monitor Grafana community discussions
+3. **Response time**: Address critical bugs quickly
+4. **Documentation updates**: Keep docs current
+
+## Plugin Catalog Guidelines
+
+### Naming Conventions
+
+- Plugin ID: `<org>-<name>-<type>` (e.g., `acme-weather-datasource`)
+- Display name: Clear, descriptive (e.g., "Weather Data Source")
+- No "Grafana" prefix (automatically implied)
+
+### Requirements
+
+1. **Unique ID**: No conflicts with existing plugins
+2. **Quality code**: Well-structured, maintainable
+3. **Security**: No vulnerabilities
+4. **License compatibility**: Open source license
+5. **Branding**: Respect Grafana trademarks
+
+### Rejections
+
+Plugins may be rejected for:
+- Security vulnerabilities
+- Malicious code
+- Poor quality or broken functionality
+- Trademark violations
+- Duplicate of existing plugin
+
+## Monitoring Plugin Usage
+
+Track plugin adoption:
+
+1. **Download statistics**: Available in Grafana plugin catalog
+2. **GitHub metrics**: Stars, forks, issues
+3. **Telemetry** (optional): Anonymous usage statistics
+4. **User feedback**: Issues, discussions, reviews
+
+## Resources
+
+- [Sign a plugin guide](https://grafana.com/docs/grafana/latest/developers/plugins/sign-a-plugin/)
+- [Publish a plugin guide](https://grafana.com/docs/grafana/latest/developers/plugins/publish-a-plugin/)
+- [Plugin catalog](https://grafana.com/grafana/plugins/)
+- [grafana-cli documentation](https://grafana.com/docs/grafana/latest/cli/)
+- Source: `pkg/plugins/manager/signature/` for signature validation logic

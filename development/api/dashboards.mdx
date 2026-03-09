@@ -1,0 +1,342 @@
+---
+title: Dashboards API
+description: Create, read, update, and delete dashboards via the API
+---
+
+# Dashboards API
+
+The Dashboards API provides endpoints for managing Grafana dashboards programmatically.
+
+## Get Dashboard by UID
+
+Retrieve a dashboard by its unique identifier (UID).
+
+<CodeGroup>
+```bash cURL
+curl -X GET http://localhost:3000/api/dashboards/uid/nHz3SXiiz \
+  -u admin:admin
+```
+
+```json Response
+{
+  "meta": {
+    "isStarred": false,
+    "slug": "my-dashboard",
+    "type": "db",
+    "canSave": true,
+    "canEdit": true,
+    "canAdmin": true,
+    "canDelete": true,
+    "created": "2021-06-01T10:00:00Z",
+    "updated": "2021-06-01T12:00:00Z",
+    "version": 1,
+    "folderUid": "folder-uid",
+    "folderTitle": "My Folder"
+  },
+  "dashboard": {
+    "uid": "nHz3SXiiz",
+    "title": "My Dashboard",
+    "panels": [],
+    "schemaVersion": 38
+  }
+}
+```
+</CodeGroup>
+
+<ParamField path="uid" type="string" required>
+  Dashboard unique identifier
+</ParamField>
+
+<ResponseField name="meta" type="object">
+  Dashboard metadata
+  
+  <ResponseField name="meta.isStarred" type="boolean">
+    Whether the dashboard is starred by the current user
+  </ResponseField>
+  
+  <ResponseField name="meta.canSave" type="boolean">
+    Whether the current user can save the dashboard
+  </ResponseField>
+  
+  <ResponseField name="meta.version" type="integer">
+    Dashboard version number
+  </ResponseField>
+  
+  <ResponseField name="meta.folderUid" type="string">
+    UID of the folder containing this dashboard
+  </ResponseField>
+</ResponseField>
+
+<ResponseField name="dashboard" type="object">
+  Dashboard JSON model
+</ResponseField>
+
+## Create/Update Dashboard
+
+Create a new dashboard or update an existing one.
+
+<CodeGroup>
+```bash cURL
+curl -X POST http://localhost:3000/api/dashboards/db \
+  -u admin:admin \
+  -H "Content-Type: application/json" \
+  -d '{
+    "dashboard": {
+      "title": "My Dashboard",
+      "tags": ["templated"],
+      "timezone": "browser",
+      "schemaVersion": 38,
+      "panels": []
+    },
+    "folderUid": "folder-uid",
+    "message": "Initial version",
+    "overwrite": false
+  }'
+```
+
+```json Response
+{
+  "status": "success",
+  "slug": "my-dashboard",
+  "version": 1,
+  "id": 1,
+  "uid": "nHz3SXiiz",
+  "url": "/d/nHz3SXiiz/my-dashboard",
+  "folderUid": "folder-uid"
+}
+```
+</CodeGroup>
+
+<ParamField body="dashboard" type="object" required>
+  Dashboard JSON model
+  
+  <ParamField body="dashboard.title" type="string" required>
+    Dashboard title
+  </ParamField>
+  
+  <ParamField body="dashboard.uid" type="string">
+    Dashboard UID (auto-generated if not provided)
+  </ParamField>
+  
+  <ParamField body="dashboard.panels" type="array">
+    Array of panel configurations
+  </ParamField>
+</ParamField>
+
+<ParamField body="folderUid" type="string">
+  UID of the folder to save the dashboard in
+</ParamField>
+
+<ParamField body="message" type="string">
+  Commit message for this dashboard version
+</ParamField>
+
+<ParamField body="overwrite" type="boolean" default="false">
+  Whether to overwrite existing dashboard with same UID
+</ParamField>
+
+<ResponseField name="status" type="string">
+  Operation status ("success")
+</ResponseField>
+
+<ResponseField name="uid" type="string">
+  Dashboard UID
+</ResponseField>
+
+<ResponseField name="url" type="string">
+  Relative URL to access the dashboard
+</ResponseField>
+
+<ResponseField name="version" type="integer">
+  New version number
+</ResponseField>
+
+## Delete Dashboard by UID
+
+Delete a dashboard by its UID.
+
+<CodeGroup>
+```bash cURL
+curl -X DELETE http://localhost:3000/api/dashboards/uid/nHz3SXiiz \
+  -u admin:admin
+```
+
+```json Response
+{
+  "title": "My Dashboard",
+  "message": "Dashboard My Dashboard deleted",
+  "uid": "nHz3SXiiz"
+}
+```
+</CodeGroup>
+
+<ParamField path="uid" type="string" required>
+  Dashboard unique identifier
+</ParamField>
+
+<ResponseField name="title" type="string">
+  Title of the deleted dashboard
+</ResponseField>
+
+<ResponseField name="message" type="string">
+  Deletion confirmation message
+</ResponseField>
+
+## Get Dashboard Versions
+
+Retrieve all versions of a dashboard.
+
+<CodeGroup>
+```bash cURL
+curl -X GET http://localhost:3000/api/dashboards/uid/nHz3SXiiz/versions \
+  -u admin:admin
+```
+
+```json Response
+{
+  "versions": [
+    {
+      "id": 1,
+      "dashboardId": 1,
+      "dashboardUid": "nHz3SXiiz",
+      "version": 1,
+      "created": "2021-06-01T10:00:00Z",
+      "createdBy": "admin",
+      "message": "Initial save"
+    }
+  ]
+}
+```
+</CodeGroup>
+
+<ParamField path="uid" type="string" required>
+  Dashboard unique identifier
+</ParamField>
+
+<ParamField query="limit" type="integer">
+  Maximum number of versions to return
+</ParamField>
+
+<ParamField query="start" type="integer">
+  Version number to start from
+</ParamField>
+
+<ResponseField name="versions" type="array">
+  Array of dashboard versions
+  
+  <ResponseField name="versions[].version" type="integer">
+    Version number
+  </ResponseField>
+  
+  <ResponseField name="versions[].created" type="string">
+    Creation timestamp (ISO 8601)
+  </ResponseField>
+  
+  <ResponseField name="versions[].createdBy" type="string">
+    Username of creator
+  </ResponseField>
+  
+  <ResponseField name="versions[].message" type="string">
+    Commit message for this version
+  </ResponseField>
+</ResponseField>
+
+## Get Dashboard Version
+
+Retrieve a specific version of a dashboard.
+
+<CodeGroup>
+```bash cURL
+curl -X GET http://localhost:3000/api/dashboards/uid/nHz3SXiiz/versions/1 \
+  -u admin:admin
+```
+
+```json Response
+{
+  "id": 1,
+  "dashboardId": 1,
+  "dashboardUid": "nHz3SXiiz",
+  "version": 1,
+  "created": "2021-06-01T10:00:00Z",
+  "createdBy": "admin",
+  "message": "Initial save",
+  "data": {
+    "title": "My Dashboard",
+    "panels": []
+  }
+}
+```
+</CodeGroup>
+
+<ParamField path="uid" type="string" required>
+  Dashboard unique identifier
+</ParamField>
+
+<ParamField path="id" type="integer" required>
+  Version ID
+</ParamField>
+
+## Get Dashboard Tags
+
+Get all dashboard tags for the current organization.
+
+<CodeGroup>
+```bash cURL
+curl -X GET http://localhost:3000/api/dashboards/tags \
+  -u admin:admin
+```
+
+```json Response
+[
+  {
+    "term": "templated",
+    "count": 5
+  },
+  {
+    "term": "production",
+    "count": 3
+  }
+]
+```
+</CodeGroup>
+
+<ResponseField name="term" type="string">
+  Tag name
+</ResponseField>
+
+<ResponseField name="count" type="integer">
+  Number of dashboards with this tag
+</ResponseField>
+
+## Get Home Dashboard
+
+Get the home dashboard for the current user.
+
+<CodeGroup>
+```bash cURL
+curl -X GET http://localhost:3000/api/dashboards/home \
+  -u admin:admin
+```
+
+```json Response
+{
+  "meta": {
+    "canEdit": false,
+    "folderTitle": "General"
+  },
+  "dashboard": {
+    "title": "Home",
+    "panels": []
+  }
+}
+```
+</CodeGroup>
+
+## Permissions
+
+If you are running Grafana Enterprise with Fine-grained access control enabled:
+
+- **Read**: Requires `dashboards:read` permission with scope `dashboards:uid:<uid>`
+- **Create**: Requires `dashboards:create` permission
+- **Update**: Requires `dashboards:write` permission with scope `dashboards:uid:<uid>`
+- **Delete**: Requires `dashboards:delete` permission with scope `dashboards:uid:<uid>`

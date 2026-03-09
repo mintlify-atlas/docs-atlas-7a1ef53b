@@ -1,0 +1,456 @@
+---
+title: Data Source Plugin Development
+description: Build custom data source plugins to connect Grafana to any data source
+keywords:
+  - grafana
+  - datasource
+  - plugin development
+  - backend
+---
+
+# Data Source Plugin Development
+
+Data source plugins enable Grafana to query and visualize data from external sources. This guide covers the architecture and implementation of data source plugins.
+
+## Overview
+
+Data source plugins consist of:
+- **Frontend**: Query editor, configuration UI, and data formatting
+- **Backend** (optional): Query execution, authentication, and data transformation
+
+Most modern data source plugins include a backend component for security and performance.
+
+## Frontend Implementation
+
+### Creating a Data Source Plugin
+
+Data source plugins extend the `DataSourcePlugin` class from `@grafana/data`:
+
+```typescript
+// module.ts
+import { DataSourcePlugin } from '@grafana/data';
+import { MyDataSource } from './datasource';
+import { ConfigEditor } from './ConfigEditor';
+import { QueryEditor } from './QueryEditor';
+import { MyQuery, MyDataSourceOptions } from './types';
+
+export const plugin = new DataSourcePlugin<MyDataSource, MyQuery, MyDataSourceOptions>(MyDataSource)
+  .setConfigEditor(ConfigEditor)
+  .setQueryEditor(QueryEditor);
+```
+
+### Implementing the DataSourceApi
+
+The main data source class extends `DataSourceApi` (from `packages/grafana-data/src/types/datasource.ts`):
+
+```typescript
+import { 
+  DataSourceApi, 
+  DataQueryRequest, 
+  DataQueryResponse,
+  DataSourceInstanceSettings,
+  TestDataSourceResponse
+} from '@grafana/data';
+import { Observable } from 'rxjs';
+
+export class MyDataSource extends DataSourceApi<MyQuery, MyDataSourceOptions> {
+  url?: string;
+
+  constructor(instanceSettings: DataSourceInstanceSettings<MyDataSourceOptions>) {
+    super(instanceSettings);
+    this.url = instanceSettings.url;
+  }
+
+  /**
+   * Main query method - required
+   * Execute queries and return results
+   */
+  query(request: DataQueryRequest<MyQuery>): Observable<DataQueryResponse> {
+    // Implementation
+  }
+
+  /**
+   * Test datasource connection - required
+   * Verify that the data source is properly configured
+   */
+  async testDatasource(): Promise<TestDataSourceResponse> {
+    // Implementation
+    return {
+      status: 'success',
+      message: 'Data source is working'
+    };
+  }
+
+  /**
+   * Optional: Provide annotation support
+   */
+  annotations?: AnnotationSupport<MyQuery>;
+
+  /**
+   * Optional: Support template variables
+   */
+  variables?: VariableSupport<MyDataSource>;
+}
+```
+
+### Query Editor Component
+
+The query editor allows users to build queries:
+
+```typescript
+import React from 'react';
+import { QueryEditorProps } from '@grafana/data';
+import { InlineField, Input } from '@grafana/ui';
+import { MyDataSource } from './datasource';
+import { MyQuery, MyDataSourceOptions } from './types';
+
+type Props = QueryEditorProps<MyDataSource, MyQuery, MyDataSourceOptions>;
+
+export function QueryEditor({ query, onChange, onRunQuery }: Props) {
+  const onQueryTextChange = (value: string) => {
+    onChange({ ...query, queryText: value });
+  };
+
+  return (
+    <div>
+      <InlineField label="Query">
+        <Input
+          value={query.queryText || ''}
+          onChange={(e) => onQueryTextChange(e.currentTarget.value)}
+          onBlur={onRunQuery}
+        />
+      </InlineField>
+    </div>
+  );
+}
+```
+
+### Configuration Editor
+
+The configuration editor manages data source settings:
+
+```typescript
+import React from 'react';
+import { DataSourcePluginOptionsEditorProps } from '@grafana/data';
+import { InlineField, Input, SecretInput } from '@grafana/ui';
+import { MyDataSourceOptions, MySecureJsonData } from './types';
+
+type Props = DataSourcePluginOptionsEditorProps<MyDataSourceOptions, MySecureJsonData>;
+
+export function ConfigEditor({ options, onOptionsChange }: Props) {
+  const { jsonData, secureJsonFields, secureJsonData } = options;
+
+  const onAPIUrlChange = (value: string) => {
+    onOptionsChange({
+      ...options,
+      jsonData: {
+        ...jsonData,
+        apiUrl: value,
+      },
+    });
+  };
+
+  const onAPIKeyChange = (value: string) => {
+    onOptionsChange({
+      ...options,
+      secureJsonData: {
+        ...secureJsonData,
+        apiKey: value,
+      },
+    });
+  };
+
+  return (
+    <>
+      <InlineField label="API URL" labelWidth={12}>
+        <Input
+          value={jsonData.apiUrl || ''}
+          onChange={(e) => onAPIUrlChange(e.currentTarget.value)}
+          width={40}
+        />
+      </InlineField>
+      <InlineField label="API Key" labelWidth={12}>
+        <SecretInput
+          isConfigured={secureJsonFields?.apiKey}
+          value={secureJsonData?.apiKey || ''}
+          onChange={(e) => onAPIKeyChange(e.currentTarget.value)}
+          width={40}
+        />
+      </InlineField>
+    </>
+  );
+}
+```
+
+## Backend Implementation
+
+### Plugin Structure
+
+Backend plugins use the [Grafana Plugin SDK for Go](https://github.com/grafana/grafana-plugin-sdk-go):
+
+```go
+// pkg/plugin/plugin.go
+package plugin
+
+import (
+    "context"
+    "encoding/json"
+    "github.com/grafana/grafana-plugin-sdk-go/backend"
+    "github.com/grafana/grafana-plugin-sdk-go/backend/instancemgmt"
+)
+
+type Datasource struct {
+    backend.CallResourceHandler
+    im instancemgmt.InstanceManager
+}
+
+func NewDatasource(settings backend.DataSourceInstanceSettings) (instancemgmt.Instance, error) {
+    // Parse settings
+    var jsonData map[string]interface{}
+    err := json.Unmarshal(settings.JSONData, &jsonData)
+    if err != nil {
+        return nil, err
+    }
+
+    return &Datasource{}, nil
+}
+```
+
+### Query Handler
+
+Implement the `QueryData` method to handle queries:
+
+```go
+func (d *Datasource) QueryData(ctx context.Context, req *backend.QueryDataRequest) (*backend.QueryDataResponse, error) {
+    response := backend.NewQueryDataResponse()
+
+    // Process each query
+    for _, q := range req.Queries {
+        res := d.query(ctx, req.PluginContext, q)
+        response.Responses[q.RefID] = res
+    }
+
+    return response, nil
+}
+
+func (d *Datasource) query(ctx context.Context, pCtx backend.PluginContext, query backend.DataQuery) backend.DataResponse {
+    var qm QueryModel
+    if err := json.Unmarshal(query.JSON, &qm); err != nil {
+        return backend.ErrDataResponse(backend.StatusBadRequest, err.Error())
+    }
+
+    // Execute query and build response
+    frame := data.NewFrame("response")
+    // Add fields to frame...
+
+    return backend.DataResponse{
+        Frames: []*data.Frame{frame},
+    }
+}
+```
+
+### Health Check
+
+Implement health checks to verify connectivity:
+
+```go
+func (d *Datasource) CheckHealth(ctx context.Context, req *backend.CheckHealthRequest) (*backend.CheckHealthResult, error) {
+    // Verify connection to data source
+    // Example: ping API endpoint
+
+    return &backend.CheckHealthResult{
+        Status:  backend.HealthStatusOk,
+        Message: "Data source is working",
+    }, nil
+}
+```
+
+### Resource Handler
+
+Implement custom HTTP endpoints:
+
+```go
+func (d *Datasource) CallResource(ctx context.Context, req *backend.CallResourceRequest, sender backend.CallResourceResponseSender) error {
+    switch req.Path {
+    case "databases":
+        return d.handleDatabasesRequest(ctx, req, sender)
+    case "tables":
+        return d.handleTablesRequest(ctx, req, sender)
+    default:
+        return sender.Send(&backend.CallResourceResponse{
+            Status: 404,
+        })
+    }
+}
+```
+
+## Plugin.json Configuration
+
+Data source plugins require specific metadata in `plugin.json`:
+
+```json
+{
+  "type": "datasource",
+  "name": "My Data Source",
+  "id": "myorg-datasource",
+  "metrics": true,
+  "logs": false,
+  "tracing": false,
+  "annotations": true,
+  "alerting": true,
+  "backend": true,
+  "executable": "gpx_myorg_datasource",
+  "queryOptions": {
+    "minInterval": true,
+    "maxDataPoints": true
+  },
+  "routes": [
+    {
+      "path": "api/*",
+      "method": "*",
+      "url": "{{ .JsonData.apiUrl }}",
+      "headers": [
+        {
+          "name": "Authorization",
+          "content": "Bearer {{ .SecureJsonData.apiKey }}"
+        }
+      ]
+    }
+  ]
+}
+```
+
+### Key Configuration Options
+
+- `metrics`: Supports time series data
+- `logs`: Supports log data
+- `tracing`: Supports trace data
+- `annotations`: Supports annotations
+- `alerting`: Can be used in alerting rules
+- `backend`: Has a backend component
+- `queryOptions`: Supported query options (minInterval, maxDataPoints)
+- `routes`: HTTP routes for proxying to external APIs
+
+## Real-World Example: Prometheus
+
+The Prometheus data source (`public/app/plugins/datasource/prometheus/`) is an excellent reference:
+
+### Frontend Entry Point
+
+```typescript
+// public/app/plugins/datasource/prometheus/module.ts
+import { DataSourcePlugin } from '@grafana/data';
+import { PrometheusDatasource, PromQueryEditorByApp, PromCheatSheet } from '@grafana/prometheus';
+import { ConfigEditor } from './configuration/ConfigEditorPackage';
+
+export const plugin = new DataSourcePlugin(PrometheusDatasource)
+  .setQueryEditor(PromQueryEditorByApp)
+  .setConfigEditor(ConfigEditor)
+  .setQueryEditorHelp(PromCheatSheet);
+```
+
+### Plugin Metadata
+
+From `public/app/plugins/datasource/prometheus/plugin.json`:
+
+```json
+{
+  "type": "datasource",
+  "name": "Prometheus",
+  "id": "prometheus",
+  "category": "tsdb",
+  "metrics": true,
+  "alerting": true,
+  "annotations": true,
+  "backend": true,
+  "queryOptions": {
+    "minInterval": true
+  }
+}
+```
+
+## Testing Data Sources
+
+### Unit Tests
+
+Test your data source implementation:
+
+```typescript
+import { MyDataSource } from './datasource';
+import { DataSourceInstanceSettings } from '@grafana/data';
+
+describe('MyDataSource', () => {
+  const instanceSettings: DataSourceInstanceSettings = {
+    id: 1,
+    uid: 'test-uid',
+    type: 'myorg-datasource',
+    name: 'Test',
+    jsonData: {},
+  };
+
+  it('should return data', async () => {
+    const ds = new MyDataSource(instanceSettings);
+    const result = await ds.testDatasource();
+    expect(result.status).toBe('success');
+  });
+});
+```
+
+### Integration Testing
+
+Test the plugin in a running Grafana instance:
+
+1. Build the plugin
+2. Copy to Grafana's plugin directory
+3. Restart Grafana
+4. Add a new data source instance
+5. Test queries in Explore
+
+## Best Practices
+
+1. **Use backend plugins for security**: Keep credentials and API keys server-side
+2. **Implement proper error handling**: Return meaningful error messages
+3. **Support streaming**: Use Observables for real-time data
+4. **Add query help**: Provide a query editor help component
+5. **Implement variable support**: Allow template variables in queries
+6. **Add annotation support**: Enable event overlays on graphs
+7. **Follow naming conventions**: Use `orgname-datasourcename-datasource` for plugin ID
+8. **Document your plugin**: Include README and inline help
+
+## Common Patterns
+
+### Proxy Configuration
+
+Use routes to proxy requests through Grafana:
+
+```json
+"routes": [
+  {
+    "path": "api/v1/query",
+    "method": "POST",
+    "url": "{{ .JsonData.url }}/api/v1/query"
+  }
+]
+```
+
+### Secure Data Storage
+
+Store sensitive data in `secureJsonData`:
+
+```typescript
+interface MySecureJsonData {
+  apiKey?: string;
+  password?: string;
+}
+```
+
+### Query Caching
+
+Implement caching for expensive queries in the backend.
+
+## Resources
+
+- [Build a data source plugin tutorial](https://grafana.com/tutorials/build-a-data-source-plugin/)
+- [Plugin SDK for Go documentation](https://pkg.go.dev/github.com/grafana/grafana-plugin-sdk-go)
+- [Grafana Plugin Examples](https://github.com/grafana/grafana-plugin-examples)
+- Source: `pkg/plugins/` and `public/app/plugins/datasource/`

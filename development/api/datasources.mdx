@@ -1,0 +1,348 @@
+---
+title: Data Sources API
+description: Manage data source configurations programmatically
+---
+
+# Data Sources API
+
+The Data Sources API provides endpoints for managing data source configurations in Grafana.
+
+## Get All Data Sources
+
+Retrieve all data sources for the current organization.
+
+<CodeGroup>
+```bash cURL
+curl -X GET http://localhost:3000/api/datasources \
+  -u admin:admin
+```
+
+```json Response
+[
+  {
+    "id": 1,
+    "uid": "P1809F7CD0C75ACF3",
+    "orgId": 1,
+    "name": "Prometheus",
+    "type": "prometheus",
+    "typeLogoUrl": "public/app/plugins/datasource/prometheus/img/prometheus_logo.svg",
+    "access": "proxy",
+    "url": "http://localhost:9090",
+    "database": "",
+    "user": "",
+    "basicAuth": false,
+    "isDefault": true,
+    "jsonData": {},
+    "readOnly": false
+  }
+]
+```
+</CodeGroup>
+
+<ResponseField name="id" type="integer">
+  Data source internal ID
+</ResponseField>
+
+<ResponseField name="uid" type="string">
+  Data source unique identifier
+</ResponseField>
+
+<ResponseField name="name" type="string">
+  Data source name
+</ResponseField>
+
+<ResponseField name="type" type="string">
+  Data source type (e.g., "prometheus", "mysql", "postgres")
+</ResponseField>
+
+<ResponseField name="access" type="string">
+  Access mode: "proxy" (via Grafana backend) or "direct" (from browser)
+</ResponseField>
+
+<ResponseField name="url" type="string">
+  Data source URL
+</ResponseField>
+
+<ResponseField name="isDefault" type="boolean">
+  Whether this is the default data source
+</ResponseField>
+
+## Get Data Source by UID
+
+Retrieve a single data source by its UID.
+
+<CodeGroup>
+```bash cURL
+curl -X GET http://localhost:3000/api/datasources/uid/P1809F7CD0C75ACF3 \
+  -u admin:admin
+```
+
+```json Response
+{
+  "id": 1,
+  "uid": "P1809F7CD0C75ACF3",
+  "orgId": 1,
+  "name": "Prometheus",
+  "type": "prometheus",
+  "access": "proxy",
+  "url": "http://localhost:9090",
+  "database": "",
+  "user": "",
+  "basicAuth": false,
+  "isDefault": true,
+  "jsonData": {
+    "httpMethod": "POST"
+  },
+  "readOnly": false,
+  "version": 1
+}
+```
+</CodeGroup>
+
+<ParamField path="uid" type="string" required>
+  Data source unique identifier
+</ParamField>
+
+## Create Data Source
+
+Create a new data source.
+
+<CodeGroup>
+```bash cURL
+curl -X POST http://localhost:3000/api/datasources \
+  -u admin:admin \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "Prometheus",
+    "type": "prometheus",
+    "url": "http://localhost:9090",
+    "access": "proxy",
+    "isDefault": false,
+    "jsonData": {
+      "httpMethod": "POST"
+    }
+  }'
+```
+
+```json Response
+{
+  "id": 1,
+  "uid": "P1809F7CD0C75ACF3",
+  "name": "Prometheus",
+  "message": "Datasource added",
+  "datasource": {
+    "id": 1,
+    "uid": "P1809F7CD0C75ACF3",
+    "name": "Prometheus",
+    "type": "prometheus",
+    "url": "http://localhost:9090",
+    "access": "proxy",
+    "isDefault": false
+  }
+}
+```
+</CodeGroup>
+
+<ParamField body="name" type="string" required>
+  Data source name
+</ParamField>
+
+<ParamField body="type" type="string" required>
+  Data source type (e.g., "prometheus", "mysql", "postgres")
+</ParamField>
+
+<ParamField body="url" type="string" required>
+  Data source URL
+</ParamField>
+
+<ParamField body="access" type="string" default="proxy">
+  Access mode: "proxy" or "direct"
+</ParamField>
+
+<ParamField body="database" type="string">
+  Database name (for database data sources)
+</ParamField>
+
+<ParamField body="user" type="string">
+  Database user (for database data sources)
+</ParamField>
+
+<ParamField body="basicAuth" type="boolean" default="false">
+  Enable basic authentication
+</ParamField>
+
+<ParamField body="basicAuthUser" type="string">
+  Basic auth username
+</ParamField>
+
+<ParamField body="isDefault" type="boolean" default="false">
+  Set as default data source
+</ParamField>
+
+<ParamField body="jsonData" type="object">
+  Additional data source configuration (varies by type)
+</ParamField>
+
+<ParamField body="secureJsonData" type="object">
+  Secure configuration fields (passwords, API keys). These are encrypted when stored.
+  
+  <ParamField body="secureJsonData.password" type="string">
+    Database password or API password
+  </ParamField>
+  
+  <ParamField body="secureJsonData.basicAuthPassword" type="string">
+    Basic authentication password
+  </ParamField>
+</ParamField>
+
+## Update Data Source by UID
+
+Update an existing data source.
+
+<CodeGroup>
+```bash cURL
+curl -X PUT http://localhost:3000/api/datasources/uid/P1809F7CD0C75ACF3 \
+  -u admin:admin \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "Prometheus Updated",
+    "type": "prometheus",
+    "url": "http://localhost:9090",
+    "access": "proxy",
+    "isDefault": false,
+    "jsonData": {
+      "httpMethod": "POST"
+    }
+  }'
+```
+
+```json Response
+{
+  "message": "Datasource updated",
+  "id": 1,
+  "name": "Prometheus Updated",
+  "datasource": {
+    "id": 1,
+    "uid": "P1809F7CD0C75ACF3",
+    "name": "Prometheus Updated",
+    "type": "prometheus"
+  }
+}
+```
+</CodeGroup>
+
+<ParamField path="uid" type="string" required>
+  Data source unique identifier
+</ParamField>
+
+The request body uses the same parameters as creating a data source.
+
+## Delete Data Source by UID
+
+Delete a data source by its UID.
+
+<CodeGroup>
+```bash cURL
+curl -X DELETE http://localhost:3000/api/datasources/uid/P1809F7CD0C75ACF3 \
+  -u admin:admin
+```
+
+```json Response
+{
+  "message": "Data source deleted",
+  "id": 1
+}
+```
+</CodeGroup>
+
+<ParamField path="uid" type="string" required>
+  Data source unique identifier
+</ParamField>
+
+## Get Data Source by Name
+
+Retrieve a data source by its name.
+
+<CodeGroup>
+```bash cURL
+curl -X GET http://localhost:3000/api/datasources/name/Prometheus \
+  -u admin:admin
+```
+</CodeGroup>
+
+<ParamField path="name" type="string" required>
+  Data source name
+</ParamField>
+
+<Note>
+  This endpoint is deprecated. Use the UID-based endpoint instead.
+</Note>
+
+## Get Data Source ID by Name
+
+Retrieve a data source ID by its name.
+
+<CodeGroup>
+```bash cURL
+curl -X GET http://localhost:3000/api/datasources/id/Prometheus \
+  -u admin:admin
+```
+
+```json Response
+{
+  "id": 1
+}
+```
+</CodeGroup>
+
+<ParamField path="name" type="string" required>
+  Data source name
+</ParamField>
+
+<Note>
+  This endpoint is deprecated. Use the UID-based endpoint instead.
+</Note>
+
+## Check Data Source Health
+
+Send a health check request to a data source.
+
+<CodeGroup>
+```bash cURL
+curl -X GET http://localhost:3000/api/datasources/uid/P1809F7CD0C75ACF3/health \
+  -u admin:admin
+```
+
+```json Response
+{
+  "status": "OK",
+  "message": "Data source is working"
+}
+```
+</CodeGroup>
+
+<ParamField path="uid" type="string" required>
+  Data source unique identifier
+</ParamField>
+
+<ResponseField name="status" type="string">
+  Health status: "OK", "ERROR", or "UNKNOWN"
+</ResponseField>
+
+<ResponseField name="message" type="string">
+  Health check message
+</ResponseField>
+
+<ResponseField name="details" type="object">
+  Additional health check details (optional)
+</ResponseField>
+
+## Permissions
+
+If you are running Grafana Enterprise with Fine-grained access control enabled:
+
+- **Read**: Requires `datasources:read` permission
+- **Create**: Requires `datasources:create` permission
+- **Update**: Requires `datasources:write` permission with scope `datasources:uid:<uid>`
+- **Delete**: Requires `datasources:delete` permission with scope `datasources:uid:<uid>`
+- **Query**: Requires `datasources:query` permission with scope `datasources:uid:<uid>`

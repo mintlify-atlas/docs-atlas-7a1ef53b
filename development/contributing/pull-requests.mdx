@@ -1,0 +1,257 @@
+---
+title: Pull requests
+description: Guidelines for creating and merging pull requests in Grafana
+---
+
+# Pull requests
+
+Every contribution to Grafana begins with a pull request. This guide covers creating, reviewing, and merging PRs.
+
+## Before you begin
+
+1. Read the [contributing guide](contributing-guide)
+2. Review the [code style guidelines](code-style)
+3. Set up [precommit hooks](https://github.com/grafana/grafana/blob/main/contribute/developer-guide.md) to auto-format on commit
+4. Ensure your code includes appropriate [tests](testing)
+
+## Creating a pull request
+
+### General guidelines
+
+To increase the chance of acceptance:
+
+- **Title and description match the implementation**
+- **Commits follow formatting guidelines** (see below)
+- **PR closes one related issue**
+- **Includes necessary tests** that verify intended behavior
+- **Rebase on main** if your PR has conflicts
+
+### For bug fixes
+
+- Description must include `Closes #<issue number>` or `Fixes #<issue number>`
+- Include tests that replicate the bug to prevent regressions
+
+### Frontend-specific requirements
+
+Pull requests for frontend code must:
+
+- Use [Emotion](https://emotion.sh/) for styling
+- Not increase the Angular code base
+- Not use `any` or `{}` without reason
+- Not contain large components that could be split into smaller ones
+- Not contain backend calls directly from components—use actions and Redux instead
+
+### Redux requirements
+
+- Use `actionCreatorFactory` and `reducerFactory` helpers (not switch statements)
+- Use `reducerTester` to test reducers
+- Not mutate state in reducers or thunks
+- Use state selectors to access state (not direct access)
+
+### Testing requirements
+
+- **Don't add snapshot tests** - We're removing existing ones
+- **Migrate Enzyme to RTL** - When modifying unit tests (unless fixing a bug)
+- **Use RTL for new tests** - [React Testing Library](https://testing-library.com/docs/dom-testing-library/api-accessibility/) encourages accessible components
+
+### Accessibility requirements
+
+For new/modified UI components:
+
+- Use semantic HTML
+- Use ARIA roles, labels, and attributes correctly (only when semantic HTML isn't sufficient)
+- Use the [Grafana theme palette](https://github.com/grafana/grafana/blob/main/contribute/style-guides/themes.md) for good contrast
+- Write tests using RTL's accessibility queries
+
+Refer to [accessibility guidelines](https://github.com/grafana/grafana/blob/main/contribute/style-guides/accessibility.md) before submitting.
+
+### Backend requirements
+
+Refer to the [backend style guide](code-style#backend-style-guide).
+
+## Formatting guidelines
+
+### Commit message format
+
+Follow [How to Write a Git Commit Message](https://chris.beams.io/posts/git-commit/) with these additions:
+
+- Subject line must begin with the **area** of the commit
+- Optional footer with [keyword and issue reference](https://help.github.com/en/articles/closing-issues-using-keywords)
+
+#### Area
+
+The area should be in UpperCamelCase. Common areas:
+
+- **Build:** Build system or external dependency changes
+- **Chore:** Changes that don't affect functionality
+- **Dashboard:** Dashboard feature changes
+- **Docs:** Documentation changes
+- **Explore:** Explore feature changes
+- **Plugins:** Plugin changes
+
+For data sources, use the data source name (e.g., AzureMonitor, Prometheus).
+For panels, use the panel name + "Panel" suffix (e.g., GraphPanel, TablePanel).
+
+**Examples:**
+
+```
+Build: Support publishing MSI to grafana.com
+Explore: Add Live option for supported data sources
+GraphPanel: Fix legend sorting issues
+Docs: Change url to URL in all documentation files
+```
+
+### Pull request titles
+
+Format: `<Area>: <Summary>` (both Area and Summary start with capital letter)
+
+The PR title becomes the commit message when squashed, so make it informative.
+
+**Example:** `Docs: Change url to URL in all documentation files`
+
+## ESLint and suppressions
+
+We use [ESLint](https://eslint.org/) with [bulk suppressions](https://eslint.org/docs/latest/use/suppressions#suppressions-file) to incrementally improve code quality.
+
+### Precommit hook
+
+- May automatically add changes to `eslint-suppressions.json`
+- May error if changes decrease code quality
+- Use `git commit --no-verify` to temporarily override (for WIP commits)
+
+### CI checks
+
+**If you see:** "There are suppressions left that do not occur anymore"
+
+**Fix:** Run `yarn lint:prune` and commit the changes
+
+**Merge conflicts** in `eslint-suppressions.json`:
+1. Merge with target branch (usually `main`)
+2. Resolve conflicts
+3. Run `yarn lint:prune`
+4. Commit
+
+## Code review
+
+Once you create a PR, someone will review your change. A review is a learning opportunity for both reviewer and author.
+
+To request a specific reviewer, tag them in the description or use the Reviewers box (type `@username`).
+
+Read [How to do a code review](https://google.github.io/eng-practices/review/reviewer/) to learn more.
+
+## Configuration changes
+
+If your PR includes configuration changes, update all of these files:
+
+- `conf/defaults.ini`
+- `conf/sample.ini`
+- `docs/sources/administration/configuration.md`
+
+## Merging pull requests
+
+<Note>
+This section is for maintainers.
+</Note>
+
+### Who merges?
+
+- **Maintainers** are responsible for merging
+- If a maintainer opens a PR, they typically merge it themselves
+- If a non-maintainer opens a PR, one of the reviewing maintainers should merge
+
+### Pre-merge checklist
+
+- [ ] Reviewed and approved?
+- [ ] All checks passed?
+- [ ] Proper PR title?
+- [ ] Needs changelog entry?
+- [ ] Needs backporting?
+
+### Status checks
+
+All required status checks must pass before merge.
+
+### Format the title
+
+Ensure the title follows `<Area>: <Summary>` format.
+
+Keep the summary short and understandable. The PR title becomes the squashed commit message and is used for the changelog.
+
+### Milestones (automated)
+
+You don't need to assign milestones manually. A bot assigns them automatically when the PR is merged:
+
+- PRs targeting `main` use the `.x` milestone of the next minor/major version
+- Backport PRs use the version of the target branch (e.g., `9.4.x` for `v9.4.x` branch)
+
+### Changelog
+
+At Grafana, we generate the [changelog](https://github.com/grafana/grafana/blob/main/CHANGELOG.md) and [release notes](https://grafana.com/docs/grafana/latest/release-notes/) from merged PRs.
+
+#### Skip changelog
+
+Add the **no-changelog** label to exclude from changelog.
+
+#### Include in changelog
+
+Add the **add to changelog** label. Then:
+
+- Title must follow formatting guidelines
+- Description must include breaking change notice if labeled as breaking change
+
+**Sections:**
+
+- **Features and enhancements:** Default for `add to changelog` label
+- **Bug fixes:** `add to changelog` + `type/bug` label, or title contains "fix"/"fixes"
+- **Plugin development:** `area/grafana/ui` or `area/grafana/runtime` label
+- **Deprecations:** Use this template in the PR description:
+
+```md
+# Deprecation notice
+
+<Deprecation description>
+```
+
+- **Breaking changes:** Add `breaking change` label and use this template:
+
+```md
+# Release notice breaking change
+
+<Breaking change description>
+```
+
+### Backporting
+
+Backporting copies the PR into previous release version branches.
+
+<Warning>
+Backporting is rare, reserved for critical bug fixes, and must be initiated by a Grafana Labs employee.
+</Warning>
+
+If warranted, a team member applies the appropriate `backport vx.x` labels. When the PR merges, backport PRs are automatically created.
+
+#### Required labels
+
+Backport labels need one of:
+- `type/bug` - Bug fixes
+- `product-approved` - Urgent fixes needing product approval
+- `type/docs` - Documentation changes
+- `type/ci` - CI automation changes
+
+### Merge process
+
+All commits are squashed when merged. You can edit the commit message before merging.
+
+**Do:**
+- Ensure PR title is formatted properly (auto-generates good commit summary)
+- Leave `Co-authored-by:` lines to credit co-authors
+- Remove commit information without context
+
+**Consider:**
+- Keep references to issues the PR fixes/closes/references (enables cross-referencing)
+
+Click **Confirm squash and merge** to finalize.
+
+### After merge
+
+Close any referenced or related issues. Optionally assign the same milestone to issues that the PR fixes.

@@ -1,0 +1,458 @@
+---
+title: Core Concepts
+description: Understand the fundamental building blocks of Grafana - dashboards, panels, data sources, and more
+---
+
+# Core Concepts
+
+This guide covers the essential concepts you need to understand to work effectively with Grafana.
+
+## Dashboards
+
+Dashboards are the primary organizational unit in Grafana. A dashboard is a collection of panels arranged in a grid layout that provides a unified view of your data.
+
+### Dashboard Structure
+
+Dashboards are stored as JSON and include:
+
+```typescript
+// From pkg/services/dashboards
+interface Dashboard {
+  id?: number;              // Database ID (null for new dashboards)
+  uid: string;              // Unique identifier
+  title: string;            // Dashboard name
+  tags: string[];           // Searchable tags
+  timezone: string;         // "browser" or specific timezone
+  panels: Panel[];          // Array of visualization panels
+  templating: {
+    list: VariableModel[];  // Template variables
+  };
+  time: {
+    from: string;           // Time range start (e.g., "now-6h")
+    to: string;             // Time range end (e.g., "now")
+  };
+  refresh: string;          // Auto-refresh interval
+  version: number;          // Version number (increments on save)
+  links: DashboardLink[];   // Dashboard links and navigation
+}
+```
+
+### Key Dashboard Features
+
+<CardGroup cols={2}>
+  <Card title="Grid Layout" icon="grid">
+    Panels are positioned on a 24-column grid with configurable height. Drag and drop to rearrange, resize by dragging corners.
+  </Card>
+  
+  <Card title="Version Control" icon="clock-rotate-left">
+    Every save creates a new version. Access dashboard history to view changes, compare versions, and restore previous states.
+  </Card>
+  
+  <Card title="Folders" icon="folder">
+    Organize dashboards into folders for better structure and access control via the folder service (`pkg/services/folder`).
+  </Card>
+  
+  <Card title="Variables" icon="dollar-sign">
+    Template variables create dynamic, reusable dashboards. Variables appear as dropdowns in the dashboard header.
+  </Card>
+</CardGroup>
+
+## Panels
+
+Panels are the building blocks of dashboards. Each panel displays data from one or more queries using a specific visualization type.
+
+### Panel Types
+
+Grafana includes many built-in panel types:
+
+- **Time Series**: Line, bar, and area charts for time-series data
+- **Stat**: Single value with optional graph sparkline
+- **Gauge**: Radial or linear gauge for showing values against thresholds
+- **Bar Chart**: Categorical data visualization
+- **Table**: Tabular data with sorting and filtering
+- **Logs**: Log line visualization with filtering and highlighting
+- **Heatmap**: Density visualization for histogram data
+
+### Panel Data Flow
+
+```typescript
+// packages/grafana-data/src/types/panel.ts
+interface PanelData {
+  state: LoadingState;      // "Loading" | "Done" | "Error" | "Streaming"
+  series: DataFrame[];      // Data frames with field overrides applied
+  timeRange: TimeRange;     // Current time range from the request
+  request?: DataQueryRequest;  // Original query request
+  errors?: DataQueryError[];   // Any query errors
+  annotations?: DataFrame[];   // Annotation data
+}
+
+interface PanelProps<T = any> {
+  id: number;               // Unique panel ID
+  data: PanelData;          // Query results and state
+  timeRange: TimeRange;     // Dashboard time range
+  timeZone: TimeZone;       // Dashboard timezone
+  options: T;               // Panel-specific options
+  fieldConfig: FieldConfigSource;  // Field configuration
+  width: number;            // Panel width in pixels
+  height: number;           // Panel height in pixels
+  transparent: boolean;     // Transparent background
+  onChangeTimeRange: (timeRange: AbsoluteTimeRange) => void;
+}
+```
+
+### Field Configuration
+
+Field configuration controls how data values are displayed:
+
+```typescript
+interface FieldConfigSource {
+  defaults: FieldConfig;     // Default settings for all fields
+  overrides: FieldConfigOverride[];  // Field-specific overrides
+}
+
+interface FieldConfig {
+  unit?: string;             // Display unit (e.g., "bytes", "ms", "percent")
+  decimals?: number;         // Decimal places to show
+  min?: number;              // Minimum value for scales
+  max?: number;              // Maximum value for scales
+  thresholds?: ThresholdsConfig;  // Threshold configuration
+  color?: FieldColor;        // Color settings
+  mappings?: ValueMapping[]; // Value mappings
+  links?: DataLink[];        // Data links
+}
+```
+
+## Data Sources
+
+Data sources are the connection between Grafana and your data. Each data source represents a database, API, or service that Grafana can query.
+
+### Data Source Types
+
+Grafana supports numerous data sources:
+
+**Time Series Databases**:
+- Prometheus
+- InfluxDB
+- Graphite
+- TimescaleDB
+
+**Logging Systems**:
+- Loki
+- Elasticsearch
+
+**Relational Databases**:
+- PostgreSQL
+- MySQL
+- Microsoft SQL Server
+
+**Cloud Services**:
+- AWS CloudWatch
+- Azure Monitor
+- Google Cloud Monitoring
+
+### Data Source Plugin Architecture
+
+```typescript
+// packages/grafana-data/src/types/datasource.ts
+abstract class DataSourceApi<
+  TQuery extends DataQuery = DataQuery,
+  TOptions extends DataSourceJsonData = DataSourceJsonData
+> {
+  name: string;              // Data source name
+  type: string;              // Data source type/plugin ID
+  uid: string;               // Unique identifier
+  meta: DataSourcePluginMeta; // Plugin metadata
+  
+  // Core query method - must be implemented
+  abstract query(request: DataQueryRequest<TQuery>): Observable<DataQueryResponse>;
+  
+  // Optional: Test the data source connection
+  testDatasource?(): Promise<TestDataSourceResponse>;
+  
+  // Optional: Variable query support
+  metricFindQuery?(query: any, options?: any): Promise<MetricFindValue[]>;
+  
+  // Optional: Annotation support
+  annotationQuery?(options: AnnotationQueryRequest<TQuery>): Promise<AnnotationEvent[]>;
+}
+```
+
+### Data Source Configuration
+
+Data sources are configured via the API:
+
+```go
+// pkg/api/datasources.go
+type DataSourceListItemDTO struct {
+    OrgId     int64  `json:"orgId"`
+    Id        int64  `json:"id"`
+    UID       string `json:"uid"`
+    Name      string `json:"name"`
+    Type      string `json:"type"`        // Plugin ID
+    TypeName  string `json:"typeName"`    // Human-readable name
+    Access    string `json:"access"`      // "proxy" or "direct"
+    Url       string `json:"url"`
+    Database  string `json:"database"`
+    User      string `json:"user"`
+    BasicAuth bool   `json:"basicAuth"`
+    IsDefault bool   `json:"isDefault"`
+    JsonData  map[string]interface{} `json:"jsonData"`
+    ReadOnly  bool   `json:"readOnly"`
+}
+```
+
+## Queries
+
+Queries define what data to retrieve from data sources. Each panel can have multiple queries that are executed and combined.
+
+### Query Model
+
+```typescript
+// @grafana/schema
+interface DataQuery {
+  refId: string;             // Query identifier (A, B, C, etc.)
+  datasource?: DataSourceRef; // Data source reference
+  hide?: boolean;            // Hide query results
+  queryType?: string;        // Query type (datasource-specific)
+}
+
+interface DataSourceRef {
+  type?: string;             // Data source plugin type
+  uid?: string;              // Data source UID
+}
+```
+
+### Query Execution Flow
+
+<Steps>
+  <Step title="Query Request">
+    Panel creates a `DataQueryRequest` with queries, time range, and other parameters.
+  </Step>
+  
+  <Step title="Data Source Query">
+    Data source plugin executes the query against the backend database or API.
+  </Step>
+  
+  <Step title="Data Frames">
+    Results are returned as `DataFrame` objects - a columnar data structure.
+  </Step>
+  
+  <Step title="Transformations">
+    Optional data transformations are applied (merge, filter, calculate fields, etc.).
+  </Step>
+  
+  <Step title="Field Config">
+    Field configuration (units, thresholds, colors) is applied to the data.
+  </Step>
+  
+  <Step title="Rendering">
+    The panel plugin renders the processed data according to its visualization type.
+  </Step>
+</Steps>
+
+## Time Ranges
+
+Time ranges control what data is displayed. Grafana supports both relative and absolute time ranges.
+
+### Time Range Types
+
+```typescript
+// Relative time ranges
+interface RawTimeRange {
+  from: string;              // "now-6h", "now-1d", "now-7d"
+  to: string;                // "now"
+}
+
+// Absolute time ranges
+interface AbsoluteTimeRange {
+  from: number;              // Unix timestamp in milliseconds
+  to: number;                // Unix timestamp in milliseconds
+}
+
+interface TimeRange {
+  from: DateTime;            // Parsed start time
+  to: DateTime;              // Parsed end time
+  raw: RawTimeRange;         // Original unparsed range
+}
+```
+
+### Common Time Range Examples
+
+- `now-5m` to `now`: Last 5 minutes
+- `now-1h` to `now`: Last hour
+- `now-24h` to `now`: Last 24 hours
+- `now/d` to `now/d`: Today so far
+- `now-7d/d` to `now-1d/d`: Previous week
+
+## Variables
+
+Variables enable dynamic dashboards by allowing users to change query parameters through dropdown menus.
+
+### Variable Types
+
+**Query Variables**: Populated by running a query against a data source
+```typescript
+// Example: List of servers from Prometheus
+{
+  type: "query",
+  name: "server",
+  query: "label_values(up, instance)",
+  datasource: { uid: "prometheus-uid" }
+}
+```
+
+**Custom Variables**: Manually defined list of values
+```typescript
+{
+  type: "custom",
+  name: "environment",
+  query: "prod,staging,dev"
+}
+```
+
+**Interval Variables**: Time interval for grouping
+```typescript
+{
+  type: "interval",
+  name: "interval",
+  auto: true,
+  auto_min: "10s",
+  auto_count: 30
+}
+```
+
+**Data Source Variables**: List of data sources
+```typescript
+{
+  type: "datasource",
+  name: "datasource",
+  query: "prometheus"  // Filter by type
+}
+```
+
+### Using Variables in Queries
+
+Reference variables using `$variable` or `${variable}` syntax:
+
+```promql
+# Prometheus query with variables
+rate(http_requests_total{instance="$server", env="$environment"}[$interval])
+```
+
+Variables are interpolated by Grafana before sending queries to data sources.
+
+## Alerts
+
+Grafana Alerting allows you to define alert rules that continuously evaluate queries and send notifications when conditions are met.
+
+### Alert Rule Structure
+
+Alert rules are defined in the unified alerting system (`pkg/services/ngalert`):
+
+```go
+// Simplified alert rule model
+type AlertRule struct {
+    UID          string            // Unique identifier
+    Title        string            // Alert name
+    Condition    string            // Query RefID to alert on
+    Data         []AlertQuery      // Queries to evaluate
+    IntervalSeconds int64          // Evaluation interval
+    For          time.Duration     // How long condition must be true
+    Annotations  map[string]string // Description, runbook URL, etc.
+    Labels       map[string]string // Labels for routing
+}
+```
+
+### Alert States
+
+- **Normal**: Condition is not met
+- **Pending**: Condition is met but waiting for "For" duration
+- **Alerting**: Condition has been met for longer than "For" duration
+- **NoData**: Query returned no data
+- **Error**: Error evaluating the alert rule
+
+### Notification Channels
+
+Alerts are routed to notification channels based on labels and routing rules:
+
+- Slack
+- Email
+- PagerDuty
+- Webhook
+- Microsoft Teams
+- OpsGenie
+- VictorOps
+- And many more via contact points
+
+<Note>
+Grafana uses a unified alerting system that evaluates alert rules independently of dashboards, providing more reliable alerting.
+</Note>
+
+## Plugins
+
+Grafana's plugin system enables extending functionality with custom panels, data sources, and applications.
+
+### Plugin Types
+
+**Panel Plugins**: Custom visualizations
+- Located in `public/app/plugins/panel/`
+- Built with `@grafana/data` and `@grafana/ui` packages
+
+**Data Source Plugins**: Connect to custom data sources
+- Backend in `pkg/tsdb/` (Go)
+- Frontend in `public/app/plugins/datasource/` (TypeScript)
+- Use `@grafana/plugin-sdk-go` for backend
+
+**App Plugins**: Full applications within Grafana
+- Can include custom pages, panels, and data sources
+- Examples in `apps/` directory
+
+### Plugin Development
+
+Plugins are built using the Grafana plugin SDK:
+
+```typescript
+// Panel plugin example
+import { PanelPlugin } from '@grafana/data';
+
+export const plugin = new PanelPlugin(MyPanelComponent)
+  .setPanelOptions((builder) => {
+    return builder
+      .addTextInput({
+        path: 'title',
+        name: 'Title',
+        defaultValue: 'Default Title'
+      });
+  });
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Dashboard Best Practices" icon="chart-line">
+    Learn how to design effective dashboards with proper layout, naming conventions, and variable usage.
+  </Card>
+  
+  <Card title="Query Optimization" icon="gauge-high">
+    Optimize your queries for better performance with proper time ranges, aggregation, and caching.
+  </Card>
+  
+  <Card title="Advanced Alerting" icon="bell">
+    Set up sophisticated alert routing, silencing, and escalation policies.
+  </Card>
+  
+  <Card title="Plugin Development" icon="puzzle-piece">
+    Build custom panels and data sources to extend Grafana's capabilities.
+  </Card>
+</CardGroup>
+
+## Additional Resources
+
+- **API Documentation**: Backend API routes in `pkg/api/`
+- **Type Definitions**: `packages/grafana-data/src/types/`
+- **Frontend Architecture**: Redux Toolkit slices in feature directories
+- **Schema Definitions**: CUE schemas in `kinds/` for dashboard structure
+
+<Note>
+Understanding these core concepts provides a solid foundation for working with Grafana effectively, whether you're creating dashboards, developing plugins, or contributing to the project.
+</Note>

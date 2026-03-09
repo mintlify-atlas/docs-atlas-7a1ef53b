@@ -1,0 +1,472 @@
+---
+title: Loki Data Source
+description: Query logs from Loki using LogQL in Grafana
+---
+
+# Loki Data Source
+
+Loki is Grafana's horizontally-scalable, highly-available log aggregation system inspired by Prometheus. Query logs using LogQL, a powerful query language designed for log exploration.
+
+## Overview
+
+The Loki data source provides:
+- LogQL query language for log filtering and parsing
+- Log stream exploration with label browser
+- Metrics extraction from logs
+- Live tailing of log streams
+- Log context and correlation
+
+<Info>
+Source: `public/app/plugins/datasource/loki/`
+</Info>
+
+## Configuration
+
+### Connection Settings
+
+<Steps>
+  <Step title="Add Data Source">
+    Navigate to **Configuration** > **Data Sources** > **Add data source** > **Loki**
+  </Step>
+  
+  <Step title="Configure URL">
+    Set the Loki server URL:
+    ```
+    http://loki:3100
+    ```
+  </Step>
+  
+  <Step title="Set Maximum Lines">
+    Configure the maximum number of log lines returned:
+    ```yaml
+    jsonData:
+      maxLines: 1000
+    ```
+  </Step>
+  
+  <Step title="Derived Fields (Optional)">
+    Extract trace IDs from logs for linking to traces:
+    ```yaml
+    derivedFields:
+      - matcherRegex: "traceID=(\\w+)"
+        name: "TraceID"
+        datasourceUid: "tempo-uid"
+    ```
+  </Step>
+</Steps>
+
+### Data Source Options
+
+<ParamField path="maxLines" type="string" default="1000">
+  Maximum number of log lines to retrieve. Higher values may impact performance.
+</ParamField>
+
+<ParamField path="derivedFields" type="array">
+  Extract fields from logs and link to other data sources:
+  - `matcherRegex`: Regular expression to extract value
+  - `name`: Field display name
+  - `datasourceUid`: Target data source UID for navigation
+  - `url`: Custom URL template (alternative to datasourceUid)
+</ParamField>
+
+## Query Editor
+
+The Loki query editor provides:
+
+<Tabs>
+  <Tab title="Label Browser">
+    Visual interface for selecting log streams:
+    
+    1. Click **Label browser**
+    2. Select labels (job, namespace, pod, etc.)
+    3. Choose label values
+    4. Build stream selector automatically
+    
+    Generates: `{job="mysql", namespace="prod"}`
+  </Tab>
+  
+  <Tab title="Code Editor">
+    Write LogQL queries directly:
+    
+    ```logql
+    {job="mysql"} |= "error" | logfmt | duration > 10s
+    ```
+    
+    Features:
+    - Syntax highlighting
+    - Label and parser autocomplete
+    - Query validation
+  </Tab>
+</Tabs>
+
+## LogQL Query Language
+
+### Log Stream Selectors
+
+Select log streams using label matchers:
+
+```logql
+{job="default/prometheus"}
+```
+
+<Info>
+Source: `public/app/plugins/datasource/loki/components/LokiCheatSheet.tsx:13`
+</Info>
+
+#### Multiple Label Matchers
+
+Combine labels with AND logic:
+
+```logql
+{app="cassandra", namespace="prod"}
+```
+
+Returns all log lines from streams matching both labels.
+
+<Info>
+Source: `public/app/plugins/datasource/loki/components/LokiCheatSheet.tsx:129`
+</Info>
+
+### Log Pipeline Operators
+
+#### Line Filters
+
+**Exact match:**
+
+```logql
+{app="cassandra"} |= "exact match"
+```
+
+**Exclude match:**
+
+```logql
+{app="cassandra"} != "do not match"
+```
+
+**Regular expression:**
+
+```logql
+{app="cassandra"} |~ "(duration|latency)s*(=|is|of)s*[d.]+"
+```
+
+<Info>
+Source: `public/app/plugins/datasource/loki/components/LokiCheatSheet.tsx:134-141`
+</Info>
+
+#### Parser Expressions
+
+Extract labels from log lines:
+
+**logfmt parser:**
+
+```logql
+{job="mysql"} | logfmt
+```
+
+Parses: `level=info msg="Server started" port=8080`
+
+**JSON parser:**
+
+```logql
+{app="nginx"} | json
+```
+
+**Pattern parser:**
+
+```logql
+{job="apache"} | pattern `<ip> - - <_> "<method> <uri> <_>" <status> <size>`
+```
+
+#### Label Filters
+
+Filter on parsed labels:
+
+```logql
+{job="mysql"} |= "metrics" | logfmt | duration > 10s
+```
+
+This query:
+1. Targets the MySQL job
+2. Keeps logs containing "metrics"
+3. Parses with logfmt
+4. Filters where duration > 10 seconds
+
+<Info>
+Source: `public/app/plugins/datasource/loki/components/LokiCheatSheet.tsx:18-23`
+</Info>
+
+### Metric Queries
+
+Extract metrics from logs:
+
+#### Count Over Time
+
+Count log lines in time windows:
+
+```logql
+count_over_time({job="mysql"}[5m])
+```
+
+Counts all log lines within the last 5 minutes.
+
+<Info>
+Source: `public/app/plugins/datasource/loki/components/LokiCheatSheet.tsx:25-28`
+</Info>
+
+#### Rate of Errors
+
+Calculate per-second rate of filtered logs:
+
+```logql
+rate(({job="mysql"} |= "error" != "timeout")[10s])
+```
+
+Gets the rate of non-timeout errors in the last 10 seconds.
+
+<Info>
+Source: `public/app/plugins/datasource/loki/components/LokiCheatSheet.tsx:30-34`
+</Info>
+
+#### Aggregations
+
+Sum, count, and group metrics:
+
+```logql
+sum(count_over_time({job="mysql"}[5m])) by (level)
+```
+
+Groups log counts by the `level` label (extracted from logs).
+
+<Info>
+Source: `public/app/plugins/datasource/loki/components/LokiCheatSheet.tsx:36-39`
+</Info>
+
+#### Unwrap
+
+Extract numeric values from logs:
+
+```logql
+sum_over_time({job="nginx"} | logfmt | unwrap bytes [5m])
+```
+
+Sums the `bytes` field over 5-minute windows.
+
+### Advanced Queries
+
+#### Multiple Filters
+
+```logql
+{namespace="prod"}
+  |~ "error|ERROR|Error"
+  != "connection reset"
+  | json
+  | level="error"
+  | duration > 1s
+```
+
+#### Label Formatting
+
+```logql
+{job="varlogs"}
+  | logfmt
+  | label_format timestamp="{{__timestamp__}}"
+  | line_format "{{.level}} - {{.msg}}"
+```
+
+## Query Options
+
+### Query Type
+
+<ParamField path="queryType" type="string">
+  - `range`: Return logs over time range (default)
+  - `instant`: Return logs at a single point in time
+  - `stream`: Live tail logs (real-time)
+</ParamField>
+
+### Line Limit
+
+<ParamField path="maxLines" type="number" default="1000">
+  Maximum number of log lines to return per query.
+</ParamField>
+
+### Resolution
+
+<ParamField path="resolution" type="number">
+  Step size for metric queries (e.g., `1`, `1/2`).
+</ParamField>
+
+## Live Tailing
+
+Tail logs in real-time:
+
+<Steps>
+  <Step title="Enable Live Mode">
+    Click the **Live** button in the query editor toolbar
+  </Step>
+  
+  <Step title="View Streaming Logs">
+    Logs appear in real-time as they're ingested by Loki
+  </Step>
+  
+  <Step title="Pause/Resume">
+    Use controls to pause, resume, or clear the log stream
+  </Step>
+</Steps>
+
+<Warning>
+Live tailing can be resource-intensive. Use specific label filters to reduce stream volume.
+</Warning>
+
+## Log Context
+
+View surrounding log lines for context:
+
+1. Click on any log line in the results
+2. Select **Show context**
+3. Grafana retrieves logs before and after the selected line
+
+Context queries use the same stream selector with adjusted time ranges.
+
+## Template Variables
+
+### Label Names
+
+List all available labels:
+
+```logql
+label_names()
+```
+
+### Label Values
+
+Get values for a specific label:
+
+```logql
+label_values(job)
+```
+
+With stream selector:
+
+```logql
+label_values({namespace="prod"}, pod)
+```
+
+### Using Variables
+
+```logql
+{job="$job", namespace="$namespace"} |= "$search_term"
+```
+
+## Derived Fields
+
+Extract structured data from logs and link to other data sources:
+
+### Trace ID Extraction
+
+Link logs to distributed traces:
+
+```yaml
+derivedFields:
+  - matcherRegex: 'traceID=(\w+)'
+    name: TraceID
+    datasourceUid: tempo-datasource-uid
+```
+
+Clicking the extracted trace ID navigates to the trace in Tempo.
+
+### Custom URL Links
+
+Create links to external systems:
+
+```yaml
+derivedFields:
+  - matcherRegex: 'incident_id=(\d+)'
+    name: Incident
+    url: 'https://incidents.example.com/${__value.raw}'
+    urlDisplayLabel: 'View Incident'
+```
+
+## Performance Optimization
+
+<CardGroup cols={2}>
+  <Card title="Use Specific Labels" icon="filter">
+    Always filter with labels first:
+    ```logql
+    {job="api", env="prod"} |= "error"
+    ```
+    More efficient than:
+    ```logql
+    {job="api"} |= "error" | env="prod"
+    ```
+  </Card>
+  
+  <Card title="Limit Time Range" icon="clock">
+    Query shorter time ranges for faster results. Use the time picker or:
+    ```logql
+    {job="api"}[5m]
+    ```
+  </Card>
+  
+  <Card title="Reduce Line Limit" icon="list">
+    Lower `maxLines` for exploratory queries:
+    ```yaml
+    maxLines: 100
+    ```
+    Increase only when needed.
+  </Card>
+  
+  <Card title="Avoid Regex When Possible" icon="magnifying-glass">
+    Use exact match for better performance:
+    ```logql
+    |= "error"
+    ```
+    Instead of:
+    ```logql
+    |~ ".*error.*"
+    ```
+  </Card>
+</CardGroup>
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="No log lines returned">
+    - Verify label selector matches ingested logs
+    - Check time range includes log data
+    - Confirm Loki is receiving logs (check `/metrics`)
+    - Review `maxLines` setting - may need to increase
+  </Accordion>
+  
+  <Accordion title="Query timeout">
+    - Reduce time range
+    - Add more specific label filters
+    - Lower `maxLines` parameter
+    - Check Loki query timeout settings
+  </Accordion>
+  
+  <Accordion title="Missing labels in autocomplete">
+    - Verify labels exist in selected time range
+    - Check Loki label API: `/loki/api/v1/labels`
+    - Ensure data source URL is correct
+  </Accordion>
+  
+  <Accordion title="Parser not extracting fields">
+    - Verify log format matches parser (logfmt, JSON, etc.)
+    - Test regex patterns at regex101.com
+    - Check for escaped characters in log lines
+  </Accordion>
+</AccordionGroup>
+
+## Best Practices
+
+1. **Always start with labels**: `{job="api"}` before line filters
+2. **Use structured logging**: JSON or logfmt for easier parsing
+3. **Index high-cardinality fields**: Configure indexed labels in Loki
+4. **Aggregate in Loki**: Use metric queries instead of downloading all logs
+5. **Set appropriate retention**: Configure log retention based on use case
+
+## Further Reading
+
+- [Loki Official Documentation](https://grafana.com/docs/loki/latest/)
+- [LogQL Query Language](https://grafana.com/docs/loki/latest/logql/)
+- [Log Correlation Best Practices](/logs/)

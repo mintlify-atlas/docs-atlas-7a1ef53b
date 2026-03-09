@@ -1,0 +1,252 @@
+---
+title: Project Structure
+description: Understanding Grafana's monorepo architecture and directory organization
+---
+
+Grafana is organized as a monorepo containing both Go backend code and TypeScript frontend code, along with shared packages and standalone apps.
+
+## Repository Layout
+
+```
+grafana/
+├── pkg/                    # Backend Go code
+├── public/app/             # Frontend TypeScript/React code
+├── packages/               # Shared frontend packages
+├── apps/                   # Standalone App SDK applications
+├── devenv/                 # Development environment setup
+├── conf/                   # Configuration files
+├── contribute/             # Contribution guides
+├── scripts/                # Build and utility scripts
+└── e2e-playwright/         # End-to-end tests
+```
+
+## Backend Architecture (`pkg/`)
+
+The backend is written in Go and organized by domain and function:
+
+| Directory         | Purpose                                                     |
+| ----------------- | ----------------------------------------------------------- |
+| `pkg/api/`        | HTTP API handlers and routes                                |
+| `pkg/services/`   | Business logic by domain (alerting, dashboards, auth, etc.) |
+| `pkg/server/`     | Server initialization and Wire dependency injection setup   |
+| `pkg/tsdb/`       | Time series database query backends                         |
+| `pkg/plugins/`    | Plugin system and loader                                    |
+| `pkg/infra/`      | Logging, metrics, database access                           |
+| `pkg/middleware/` | HTTP middleware                                             |
+| `pkg/setting/`    | Configuration management                                    |
+
+### Backend Patterns
+
+- **Dependency Injection**: Uses Wire (regenerate with `make gen-go` after service changes)
+- **Service Architecture**: Services implement interfaces in the same package; business logic lives in `pkg/services/<domain>/`, not in API handlers
+- **Database Access**: Via `sqlstore`
+- **Plugin Communication**: gRPC/protobuf
+- **Separate PRs**: Frontend and backend changes should be in separate PRs (different deployment cadences)
+
+### Key Backend Directories
+
+<AccordionGroup>
+  <Accordion title="pkg/api/ - HTTP API">
+    Contains HTTP API handlers and routing logic. API handlers should be thin and delegate business logic to services.
+  </Accordion>
+
+  <Accordion title="pkg/services/ - Business Logic">
+    Organized by domain:
+    - `alerting/` - Alerting system
+    - `dashboards/` - Dashboard management
+    - `auth/` - Authentication
+    - `sqlstore/` - Database access layer
+    - `featuremgmt/` - Feature toggles (auto-generates code)
+    - And 70+ other services
+  </Accordion>
+
+  <Accordion title="pkg/tsdb/ - Data Source Backends">
+    Query backends for time series databases. Each data source has its own subdirectory.
+  </Accordion>
+
+  <Accordion title="pkg/plugins/ - Plugin System">
+    Plugin discovery, loading, and management. Plugins communicate via gRPC.
+  </Accordion>
+</AccordionGroup>
+
+## Frontend Architecture (`public/app/`)
+
+The frontend is built with TypeScript and React:
+
+| Directory              | Purpose                                               |
+| ---------------------- | ----------------------------------------------------- |
+| `public/app/core/`     | Shared services, components, utilities                |
+| `public/app/features/` | Feature code by domain (dashboard, alerting, explore) |
+| `public/app/plugins/`  | Built-in plugins (many are Yarn workspaces)           |
+| `public/app/types/`    | TypeScript type definitions                           |
+| `public/app/store/`    | Redux store configuration                             |
+
+### Frontend Patterns
+
+- **State Management**: Redux Toolkit with slices (not old Redux patterns)
+- **Components**: Function components with hooks (not class components)
+- **Styling**: Emotion CSS-in-JS via `useStyles2`
+- **Data Fetching**: RTK Query
+- **Testing**: React Testing Library
+
+### Key Frontend Directories
+
+<AccordionGroup>
+  <Accordion title="public/app/core/ - Core Framework">
+    Shared utilities, services, and components used across features:
+    - `services/` - Core services (backend API, context, etc.)
+    - `components/` - Reusable UI components
+    - `utils/` - Utility functions
+  </Accordion>
+
+  <Accordion title="public/app/features/ - Feature Code">
+    Each feature has its own directory with components, state, and logic:
+    - `dashboard/` - Dashboard functionality
+    - `alerting/` - Alerting UI
+    - `explore/` - Explore interface
+    - `panel/` - Panel framework
+    - 50+ other features organized by domain
+  </Accordion>
+
+  <Accordion title="public/app/plugins/ - Built-in Plugins">
+    Core plugins that ship with Grafana. Many are separate Yarn workspaces requiring independent builds.
+
+    See [Plugin Workspaces](#plugin-workspaces) below.
+  </Accordion>
+</AccordionGroup>
+
+## Shared Packages (`packages/`)
+
+Reusable packages used across the Grafana ecosystem:
+
+| Package               | Purpose                                        |
+| --------------------- | ---------------------------------------------- |
+| `@grafana/data`       | Core data structures, types, and utilities     |
+| `@grafana/ui`         | Reusable UI component library                  |
+| `@grafana/runtime`    | Runtime services and plugin SDK                |
+| `@grafana/schema`     | CUE-generated TypeScript types                 |
+| `@grafana/scenes`     | Dashboard framework                            |
+
+<Info>
+  These packages are managed as Yarn workspaces and can be published independently.
+</Info>
+
+## Backend Apps (`apps/`)
+
+Standalone Go applications built using the Grafana App SDK:
+
+- `apps/dashboard/` - Dashboard service
+- `apps/folder/` - Folder management
+- `apps/alerting/` - Alerting service
+
+These apps can run independently or integrated with the main Grafana server.
+
+## Plugin Workspaces
+
+These built-in plugins require separate build steps:
+
+- `azuremonitor`
+- `cloud-monitoring`
+- `grafana-postgresql-datasource`
+- `loki`
+- `tempo`
+- `jaeger`
+- `mysql`
+- `parca`
+- `zipkin`
+- `grafana-pyroscope-datasource`
+- `grafana-testdata-datasource`
+
+Build a specific plugin:
+```bash
+yarn workspace @grafana-plugins/<name> dev
+```
+
+Build all plugins:
+```bash
+yarn plugin:build:dev
+```
+
+## Configuration
+
+- **Defaults**: `conf/defaults.ini`
+- **Overrides**: `conf/custom.ini`
+- **Build Tags**: `oss` (default), `enterprise`, `pro`
+
+## Schema and Code Generation
+
+### CUE Schemas (`kinds/`)
+
+Dashboard and panel schemas are defined in CUE and generate both Go and TypeScript code:
+
+```bash
+make gen-cue
+```
+
+Run this after modifying schemas in `kinds/`.
+
+### Wire Dependency Injection
+
+Backend service initialization uses Wire for compile-time dependency injection:
+
+```bash
+make gen-go
+```
+
+Run this after changing service initialization or adding dependencies.
+
+### Feature Toggles
+
+Feature flags are defined in `pkg/services/featuremgmt/` and auto-generate code:
+
+```bash
+make gen-feature-toggles
+```
+
+### Go Workspace
+
+Defined in `go.work`. Update after adding Go modules:
+
+```bash
+make update-workspace
+```
+
+## Database Migrations
+
+Database schema migrations live in `pkg/services/sqlstore/migrations/`.
+
+Test with:
+```bash
+make devenv sources=postgres_tests,mysql_tests
+make test-go-integration-postgres
+```
+
+## Testing Structure
+
+- **Frontend tests**: `*.test.ts`, `*.test.tsx` files alongside source code
+- **Backend tests**: `*_test.go` files in Go packages
+- **E2E tests**: `e2e-playwright/` directory
+
+## Key Files
+
+| File                  | Purpose                                           |
+| --------------------- | ------------------------------------------------- |
+| `Makefile`            | Build commands and targets                        |
+| `package.json`        | Frontend dependencies and scripts                 |
+| `go.mod`              | Go dependencies                                   |
+| `go.work`             | Go workspace configuration                        |
+| `tsconfig.json`       | TypeScript configuration                          |
+| `.air.toml`           | Hot-reload configuration for `make run`           |
+| `AGENTS.md`           | AI agent guidance for development                 |
+| `CONTRIBUTING.md`     | Contribution guidelines                           |
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Building" icon="hammer" href="/development/building">
+    Build and run Grafana locally
+  </Card>
+  <Card title="Testing" icon="flask" href="/development/contributing/testing">
+    Run tests for your changes
+  </Card>
+</CardGroup>

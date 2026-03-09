@@ -1,0 +1,358 @@
+---
+title: Prometheus Data Source
+description: Query metrics from Prometheus using PromQL in Grafana
+---
+
+# Prometheus Data Source
+
+Prometheus is an open-source monitoring and alerting toolkit designed for reliability and scalability. Grafana provides native support for querying Prometheus metrics using PromQL (Prometheus Query Language).
+
+## Overview
+
+The Prometheus data source allows you to:
+- Query time series metrics with PromQL
+- Visualize instant vectors and range vectors
+- Use metric metadata for query building
+- Create alerting rules based on Prometheus queries
+- Explore exemplars and tracing integration
+
+<Info>
+Source: `public/app/plugins/datasource/prometheus/` and `packages/grafana-prometheus/`
+</Info>
+
+## Configuration
+
+### Connection Settings
+
+<Steps>
+  <Step title="Add Data Source">
+    Navigate to **Configuration** > **Data Sources** > **Add data source** > **Prometheus**
+  </Step>
+  
+  <Step title="Configure URL">
+    Set the Prometheus server URL:
+    ```
+    http://localhost:9090
+    ```
+    
+    Use the proxy access mode (default) for server-side queries.
+  </Step>
+  
+  <Step title="Authentication" >
+    Configure authentication if required:
+    - Basic authentication
+    - TLS client certificate
+    - OAuth passthrough
+    - Azure authentication
+  </Step>
+  
+  <Step title="Additional Settings">
+    Configure optional settings:
+    - Scrape interval
+    - Query timeout
+    - HTTP method (GET/POST)
+  </Step>
+</Steps>
+
+### Data Source Options
+
+<ParamField path="timeInterval" type="string" default="">
+  Minimum scrape interval (e.g., `30s`, `1m`). Used to calculate `$__interval` and `$__rate_interval`.
+</ParamField>
+
+<ParamField path="queryTimeout" type="string" default="">
+  Maximum time to wait for a query response (e.g., `60s`).
+</ParamField>
+
+<ParamField path="httpMethod" type="string" default="POST">
+  HTTP method for queries. POST is recommended for long queries.
+</ParamField>
+
+<ParamField path="disableMetricsLookup" type="boolean" default="false">
+  Disable metric name lookup for improved performance with large metric counts.
+</ParamField>
+
+<ParamField path="prometheusType" type="string">
+  Prometheus implementation type: `Prometheus`, `Cortex`, `Mimir`, or `Thanos`.
+</ParamField>
+
+<ParamField path="cacheLevel" type="string" default="Low">
+  Query result cache level: `None`, `Low`, `Medium`, or `High`.
+</ParamField>
+
+## Query Editor
+
+The Prometheus query editor supports two modes:
+
+<Tabs>
+  <Tab title="Code Mode">
+    Write PromQL queries directly:
+    
+    ```promql
+    rate(http_requests_total{job="api-server"}[5m])
+    ```
+    
+    Features:
+    - Syntax highlighting with Monaco editor
+    - Auto-completion for metrics, labels, and functions
+    - Query validation
+    - Metric browser
+  </Tab>
+  
+  <Tab title="Builder Mode">
+    Visual query builder for constructing PromQL queries:
+    
+    1. Select metric from dropdown
+    2. Add label filters
+    3. Choose operations (rate, sum, etc.)
+    4. Configure range and step
+    
+    Builder mode generates valid PromQL expressions.
+  </Tab>
+</Tabs>
+
+## PromQL Examples
+
+### Instant Query
+
+Get current value of a metric:
+
+```promql
+up{job="prometheus"}
+```
+
+### Range Query with Rate
+
+Calculate per-second rate over 5 minutes:
+
+```promql
+rate(http_request_total[5m])
+```
+
+<Info>
+Source: `packages/grafana-prometheus/src/components/PromCheatSheet.tsx:13-16`
+</Info>
+
+### Percentile Calculation
+
+Calculate 95th percentile of request latencies:
+
+```promql
+histogram_quantile(0.95, sum(rate(prometheus_http_request_duration_seconds_bucket[5m])) by (le))
+```
+
+<Info>
+Source: `packages/grafana-prometheus/src/components/PromCheatSheet.tsx:18-21`
+</Info>
+
+### Aggregation
+
+Sum values and group by label:
+
+```promql
+sum(rate(http_requests_total[5m])) by (status_code)
+```
+
+### Alert Tracking
+
+Sum alerts firing over 24 hours:
+
+```promql
+sort_desc(sum(sum_over_time(ALERTS{alertstate="firing"}[24h])) by (alertname))
+```
+
+<Info>
+Source: `packages/grafana-prometheus/src/components/PromCheatSheet.tsx:23-26`
+</Info>
+
+## Query Options
+
+### Legend Format
+
+Customize series names using label values:
+
+```
+{{instance}} - {{job}}
+```
+
+Output: `localhost:9090 - prometheus`
+
+### Min Step
+
+Defines the graph resolution using duration format:
+- `15s` - high resolution, may be slow over large time ranges
+- `1m` - medium resolution
+- `5m` - low resolution, faster queries
+
+<Note>
+If no step is specified, resolution is calculated automatically based on panel width and time range.
+
+Source: `packages/grafana-prometheus/src/components/PromCheatSheet.tsx:28-31`
+</Note>
+
+### Resolution
+
+Control data point density:
+- `1/1` - One data point per pixel
+- `1/2` - One data point per 2 pixels (faster)
+- `1/10` - Sparse data points
+
+## Template Variables
+
+### Label Values Query
+
+Populate variable from label values:
+
+```promql
+label_values(up, instance)
+```
+
+Returns all unique values of the `instance` label.
+
+### Metric Names Query
+
+List all metrics matching a pattern:
+
+```promql
+metrics(http_.*)
+```
+
+### Query Result Variable
+
+Use query results as variable values:
+
+```promql
+query_result(sum(up) by (job))
+```
+
+### Using Variables in Queries
+
+```promql
+rate(http_requests_total{instance="$instance", job="$job"}[5m])
+```
+
+## Exemplars
+
+Exemplars link metrics to trace IDs for deeper analysis:
+
+<Steps>
+  <Step title="Configure Trace ID">
+    In data source settings, configure exemplar trace ID destinations:
+    
+    ```yaml
+    jsonData:
+      exemplarTraceIdDestinations:
+        - name: traceID
+          datasourceUid: tempo-uid
+    ```
+  </Step>
+  
+  <Step title="Query with Exemplars">
+    Enable "Exemplars" in query options. Grafana displays exemplar data points on the graph.
+  </Step>
+  
+  <Step title="Navigate to Traces">
+    Click on exemplar points to jump to corresponding traces in Tempo or Jaeger.
+  </Step>
+</Steps>
+
+## Advanced Features
+
+### Recording Rules
+
+Query pre-computed recording rules for faster dashboards:
+
+```promql
+job:http_requests_total:rate5m
+```
+
+<Warning>
+Recording rules must be defined in Prometheus configuration. They don't appear in metric autocomplete by default.
+</Warning>
+
+### Incremental Querying
+
+Enable incremental querying for live dashboards:
+
+```yaml
+jsonData:
+  incrementalQuerying: true
+  incrementalQueryOverlapWindow: "10m"
+```
+
+Grafana only queries new data since the last refresh, reducing load.
+
+### Custom Query Parameters
+
+Add custom parameters to all Prometheus requests:
+
+```yaml
+jsonData:
+  customQueryParameters: "timeout=30s&lookback_delta=5m"
+```
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="No data in graph">
+    - Verify time range includes data points
+    - Check metric exists: `up{job="your-job"}`
+    - Confirm Prometheus is scraping the target
+    - Review Prometheus logs for scrape errors
+  </Accordion>
+  
+  <Accordion title="Query timeout">
+    - Reduce time range
+    - Increase `queryTimeout` in data source settings
+    - Use recording rules for expensive queries
+    - Add more specific label filters to reduce cardinality
+  </Accordion>
+  
+  <Accordion title="High cardinality warnings">
+    - Avoid labels with unbounded values (IDs, timestamps)
+    - Use recording rules to pre-aggregate
+    - Enable `disableMetricsLookup` for better UI performance
+    - Configure `seriesLimit` to prevent overload
+  </Accordion>
+  
+  <Accordion title="Metric autocomplete not working">
+    - Check network connectivity to Prometheus
+    - Verify `/api/v1/label/__name__/values` endpoint is accessible
+    - Try enabling `disableMetricsLookup` and use manual entry
+  </Accordion>
+</AccordionGroup>
+
+## Best Practices
+
+<CardGroup cols={2}>
+  <Card title="Use Rate for Counters" icon="arrow-trend-up">
+    Always use `rate()` or `irate()` for counter metrics:
+    ```promql
+    rate(http_requests_total[5m])
+    ```
+  </Card>
+  
+  <Card title="Avoid Joins" icon="link-slash">
+    PromQL joins can be expensive. Use recording rules for complex joins.
+  </Card>
+  
+  <Card title="Label Matchers" icon="filter">
+    Be specific with label matchers to reduce query scope:
+    ```promql
+    {job="api",environment="prod"}
+    ```
+  </Card>
+  
+  <Card title="Range Selection" icon="clock">
+    Choose appropriate range intervals:
+    - `[1m]` for real-time metrics
+    - `[5m]` for general dashboards
+    - `[1h]` for long-term trends
+  </Card>
+</CardGroup>
+
+## Further Reading
+
+- [Prometheus Official Documentation](https://prometheus.io/docs/)
+- [PromQL Query Language](https://prometheus.io/docs/prometheus/latest/querying/basics/)
+- [Grafana Alerting with Prometheus](/alerting/fundamentals/)

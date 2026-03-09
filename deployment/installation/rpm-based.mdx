@@ -1,0 +1,461 @@
+---
+title: RPM-based Installation
+description: Install Grafana on RHEL, Fedora, or CentOS using YUM/DNF repository or RPM packages
+---
+
+# RPM-based Installation
+
+This guide covers installing Grafana on RPM-based Linux distributions (RHEL, Fedora, CentOS) using the YUM/DNF repository or standalone RPM packages.
+
+## Installation Methods
+
+You can install Grafana on RPM-based systems using:
+
+- **YUM/DNF repository** (recommended): Automatic updates via `dnf update`
+- **RPM package**: Manual installation from downloaded package
+- **Standalone binary**: Manual installation from tarball
+
+## Install from RPM Repository
+
+Installing from the RPM repository enables automatic updates when you run `dnf update` or `yum update`.
+
+### Available Repositories
+
+| Edition | Package | Repository |
+|---------|---------|------------|
+| Grafana Enterprise | `grafana-enterprise` | `https://rpm.grafana.com` |
+| Grafana Enterprise (Beta) | `grafana-enterprise` | `https://rpm-beta.grafana.com` |
+| Grafana OSS | `grafana` | `https://rpm.grafana.com` |
+| Grafana OSS (Beta) | `grafana` | `https://rpm-beta.grafana.com` |
+
+<Note>
+Grafana Enterprise is the recommended edition. It's free and includes all OSS features, with the option to upgrade to the full Enterprise feature set.
+</Note>
+
+<Steps>
+
+### Import the GPG key
+
+```bash
+wget -q -O gpg.key https://rpm.grafana.com/gpg.key
+sudo rpm --import gpg.key
+```
+
+### Create the repository file
+
+Create `/etc/yum.repos.d/grafana.repo` with the following content:
+
+```bash
+sudo tee /etc/yum.repos.d/grafana.repo <<EOF
+[grafana]
+name=grafana
+baseurl=https://rpm.grafana.com
+repo_gpgcheck=1
+enabled=1
+gpgcheck=1
+gpgkey=https://rpm.grafana.com/gpg.key
+sslverify=1
+sslcacert=/etc/pki/tls/certs/ca-bundle.crt
+EOF
+```
+
+For beta releases, change the `baseurl` to `https://rpm-beta.grafana.com`.
+
+### Install Grafana
+
+For Grafana OSS:
+
+```bash
+sudo dnf install grafana
+```
+
+For Grafana Enterprise:
+
+```bash
+sudo dnf install grafana-enterprise
+```
+
+On older systems using YUM:
+
+```bash
+sudo yum install grafana-enterprise
+```
+
+</Steps>
+
+## Install from RPM Package
+
+Manual installation using RPM packages requires you to manually update Grafana for each new version.
+
+<Note>
+RPM files are signed and can be verified with the [public GPG key](https://rpm.grafana.com/gpg.key).
+</Note>
+
+<Steps>
+
+### Download and install
+
+Visit the [Grafana download page](https://grafana.com/grafana/download) and:
+
+1. Select your Grafana version
+2. Choose your Edition (Enterprise or Open Source)
+3. Select the Linux or ARM tab
+4. Copy the RPM package URL
+
+Install using DNF:
+
+```bash
+sudo dnf install <rpm-package-url>
+```
+
+Example:
+
+```bash
+sudo dnf install https://dl.grafana.com/enterprise/release/grafana-enterprise-11.0.0-1.x86_64.rpm
+```
+
+On older systems using YUM:
+
+```bash
+sudo yum install -y <rpm-package-url>
+```
+
+</Steps>
+
+## Install as Standalone Binary
+
+For manual installation with full control over file locations:
+
+<Steps>
+
+### Download and extract
+
+Download the tarball from the [Grafana download page](https://grafana.com/grafana/download) and extract it:
+
+```bash
+wget <tarball-url>
+tar -zxvf grafana-<version>.linux-amd64.tar.gz
+```
+
+### Create Grafana user
+
+```bash
+sudo useradd -r -s /bin/false grafana
+```
+
+### Move to installation directory
+
+```bash
+sudo mv grafana-<version> /usr/local/grafana
+```
+
+### Set ownership
+
+```bash
+sudo chown -R grafana:users /usr/local/grafana
+```
+
+### Create systemd service file
+
+```bash
+sudo touch /etc/systemd/system/grafana-server.service
+```
+
+Add the following content:
+
+```ini
+[Unit]
+Description=Grafana Server
+After=network.target
+
+[Service]
+Type=simple
+User=grafana
+Group=users
+ExecStart=/usr/local/grafana/bin/grafana server --config=/usr/local/grafana/conf/grafana.ini --homepath=/usr/local/grafana
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target
+```
+
+### Initialize data directory
+
+Manually start Grafana once to create the data directory:
+
+```bash
+/usr/local/grafana/bin/grafana-server --homepath /usr/local/grafana
+```
+
+Press `Ctrl+C` to stop, then update ownership:
+
+```bash
+sudo chown -R grafana:users /usr/local/grafana
+```
+
+### Enable and start service
+
+```bash
+sudo systemctl daemon-reload
+sudo systemctl enable grafana-server
+sudo systemctl start grafana-server
+```
+
+</Steps>
+
+## Start Grafana Server
+
+### Using systemd
+
+Start the Grafana server:
+
+```bash
+sudo systemctl start grafana-server
+```
+
+Enable Grafana to start at boot:
+
+```bash
+sudo systemctl enable grafana-server
+```
+
+Check service status:
+
+```bash
+sudo systemctl status grafana-server
+```
+
+### Using init.d
+
+Start Grafana:
+
+```bash
+sudo service grafana-server start
+```
+
+Enable at boot:
+
+```bash
+sudo chkconfig grafana-server on
+```
+
+## Configuration
+
+After installation, Grafana uses these default paths:
+
+| Path | Description |
+|------|-------------|
+| `/etc/grafana/grafana.ini` | Configuration file |
+| `/var/lib/grafana` | Data directory (SQLite database, plugins) |
+| `/var/log/grafana` | Log files |
+| `/usr/share/grafana` | Installation directory |
+| `/etc/grafana/provisioning` | Provisioning directory |
+| `/etc/sysconfig/grafana-server` | Environment variables |
+
+### Environment Variables File
+
+The systemd service reads environment variables from `/etc/sysconfig/grafana-server`:
+
+```bash
+CONF_FILE=/etc/grafana/grafana.ini
+DATA_DIR=/var/lib/grafana
+LOG_DIR=/var/log/grafana
+PID_FILE_DIR=/run/grafana
+PLUGINS_DIR=/var/lib/grafana/plugins
+PROVISIONING_CFG_DIR=/etc/grafana/provisioning
+```
+
+## Systemd Service Configuration
+
+The Grafana systemd service (`/usr/lib/systemd/system/grafana-server.service`) includes:
+
+- Runs as non-root `grafana` user
+- Dependencies: PostgreSQL, MariaDB, MySQL, InfluxDB (waits for them if present)
+- Security hardening with restricted capabilities
+- File open limit: 10,000
+- Stop timeout: 20 seconds
+- Automatic restart on failure
+
+Service unit configuration:
+
+```ini
+[Unit]
+Description=Grafana instance
+Documentation=http://docs.grafana.org
+Wants=network-online.target
+After=network-online.target
+After=postgresql.service mariadb.service mysql.service influxdb.service
+
+[Service]
+EnvironmentFile=/etc/sysconfig/grafana-server
+User=grafana
+Group=grafana
+Type=simple
+Restart=on-failure
+WorkingDirectory=/usr/share/grafana
+RuntimeDirectory=grafana
+RuntimeDirectoryMode=0750
+ExecStart=/usr/share/grafana/bin/grafana server \
+  --config=${CONF_FILE} \
+  --pidfile=${PID_FILE_DIR}/grafana-server.pid \
+  --packaging=rpm \
+  cfg:default.paths.logs=${LOG_DIR} \
+  cfg:default.paths.data=${DATA_DIR} \
+  cfg:default.paths.plugins=${PLUGINS_DIR} \
+  cfg:default.paths.provisioning=${PROVISIONING_CFG_DIR}
+
+LimitNOFILE=10000
+TimeoutStopSec=20
+
+[Install]
+WantedBy=multi-user.target
+```
+
+## Firewall Configuration
+
+If you have firewalld enabled, allow traffic on port 3000:
+
+```bash
+sudo firewall-cmd --permanent --add-port=3000/tcp
+sudo firewall-cmd --reload
+```
+
+## SELinux Configuration
+
+If SELinux is enforcing, you may need to configure it for Grafana:
+
+```bash
+sudo semanage port -a -t http_port_t -p tcp 3000
+```
+
+Or temporarily set SELinux to permissive mode:
+
+```bash
+sudo setenforce 0
+```
+
+## Access Grafana
+
+After starting the server, access Grafana:
+
+1. Open your browser to `http://localhost:3000`
+2. Sign in with default credentials:
+   - Username: `admin`
+   - Password: `admin`
+3. Change the password when prompted
+
+## Uninstall Grafana
+
+<Steps>
+
+### Stop the service
+
+For systemd:
+
+```bash
+sudo systemctl stop grafana-server
+```
+
+For init.d:
+
+```bash
+sudo service grafana-server stop
+```
+
+### Remove the package
+
+For Grafana OSS:
+
+```bash
+sudo dnf remove grafana
+```
+
+For Grafana Enterprise:
+
+```bash
+sudo dnf remove grafana-enterprise
+```
+
+On older systems using YUM:
+
+```bash
+sudo yum remove grafana-enterprise
+```
+
+### Remove the repository (optional)
+
+```bash
+sudo rm -i /etc/yum.repos.d/grafana.repo
+```
+
+### Remove data (optional)
+
+```bash
+sudo rm -rf /var/lib/grafana
+sudo rm -rf /var/log/grafana
+sudo rm -rf /etc/grafana
+```
+
+</Steps>
+
+## Troubleshooting
+
+### View logs
+
+```bash
+sudo journalctl -u grafana-server -f
+```
+
+Or check log files:
+
+```bash
+sudo tail -f /var/log/grafana/grafana.log
+```
+
+### Check service status
+
+```bash
+sudo systemctl status grafana-server
+```
+
+### Verify installation
+
+```bash
+grafana-server -v
+```
+
+### Port already in use
+
+If port 3000 is already in use, edit `/etc/grafana/grafana.ini`:
+
+```ini
+[server]
+http_port = 3001
+```
+
+Restart Grafana:
+
+```bash
+sudo systemctl restart grafana-server
+```
+
+### Check firewall
+
+```bash
+sudo firewall-cmd --list-all
+```
+
+### Check SELinux status
+
+```bash
+getenforce
+sudo ausearch -m avc -ts recent
+```
+
+## Next Steps
+
+- Configure data sources
+- Set up authentication (LDAP, OAuth, SAML)
+- Configure SMTP for email notifications
+- Set up provisioning for dashboards and data sources
+- Configure an external database (MySQL or PostgreSQL)

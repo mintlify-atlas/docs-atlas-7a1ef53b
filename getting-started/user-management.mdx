@@ -1,0 +1,749 @@
+---
+title: 'User Management'
+description: 'Learn how to manage users, teams, roles, and permissions in Grafana'
+---
+
+# User Management
+
+Grafana's user management system controls who can access your Grafana instance and what they can do. This includes managing users, teams, roles, and permissions at multiple levels.
+
+This guide covers everything you need to know about managing access to your Grafana instance.
+
+## Prerequisites
+
+Before you begin:
+
+- Grafana is installed and running
+- You have Organization Admin or Server Admin permissions
+- You understand your organization's access requirements
+
+## Understanding Users and Permissions
+
+A **user** is any individual who can log in to Grafana. Each user has:
+
+- **Authentication credentials**: Username/password, OAuth, LDAP, etc.
+- **Organization membership**: Can belong to one or more organizations
+- **Role**: Determines permissions within an organization
+- **Team membership**: Optional group membership for permission management
+
+### Permission Hierarchy
+
+Grafana has three permission levels:
+
+1. **Server Admin**: Manages the entire Grafana instance
+2. **Organization**: Controls access to dashboards, data sources, and resources within an organization
+3. **Dashboard/Folder**: Fine-grained permissions on individual resources
+
+<Frame>
+  <img src="/images/permission-hierarchy.png" alt="Grafana permission hierarchy" />
+</Frame>
+
+## User Roles
+
+### Organization Roles
+
+Every user in an organization has one of these roles:
+
+<CardGroup cols={2}>
+  <Card title="Organization Admin" icon="user-shield">
+    Full control over organization resources including users, teams, and settings
+  </Card>
+  <Card title="Editor" icon="pen-to-square">
+    Can create and edit dashboards, folders, and playlists
+  </Card>
+  <Card title="Viewer" icon="eye">
+    Can view dashboards and playlists, query data sources
+  </Card>
+  <Card title="No Basic Role" icon="ban">
+    No default permissions (use with RBAC)
+  </Card>
+</CardGroup>
+
+### Role Permissions Matrix
+
+The following table shows what each role can do:
+
+| Permission | Admin | Editor | Viewer | No Basic Role |
+|------------|:-----:|:------:|:------:|:-------------:|
+| View dashboards | ✓ | ✓ | ✓ | |
+| Add, edit, delete dashboards | ✓ | ✓ | | |
+| Add, edit, delete folders | ✓ | ✓ | | |
+| View playlists | ✓ | ✓ | ✓ | |
+| Add, edit, delete playlists | ✓ | ✓ | | |
+| Create library panels | ✓ | ✓ | | |
+| Access Explore | ✓ | ✓ | | |
+| Query data sources | ✓ | ✓ | ✓ | |
+| Add, edit, delete data sources | ✓ | | | |
+| Add and edit users | ✓ | | | |
+| Add and edit teams | ✓ | | | |
+| Change organization settings | ✓ | | | |
+| Configure plugins | ✓ | | | |
+
+<Note>
+**No Basic Role** is designed for use with Role-Based Access Control (RBAC) in Grafana Enterprise, where you assign specific permissions as needed.
+</Note>
+
+### Server Administrators
+
+**Server Admins** (also called Grafana Admins) manage the entire Grafana instance:
+
+- Create, edit, and delete organizations
+- Manage users across all organizations
+- View server-wide settings and statistics
+- Upgrade to Grafana Enterprise
+- Configure global settings
+
+<Warning>
+Server Admin is distinct from Organization Admin. Server Admins manage the Grafana instance, while Organization Admins manage a single organization.
+</Warning>
+
+## Managing Organization Users
+
+### Viewing Users
+
+1. Click **Administration** → **Users and access** → **Users**
+2. You'll see a list of all users in your organization
+3. Use the search box to filter users
+
+### Inviting Users
+
+Invite new users to your organization:
+
+1. Navigate to **Administration** → **Users and access** → **Users**
+2. Click **Organization users**
+3. Click **Invite**
+4. Fill in the form:
+
+```text
+Email or username: user@example.com
+Name: John Doe
+Role: Editor
+Send invite email: ON
+```
+
+5. Click **Submit**
+
+<Accordion title="Invite by Username vs Email">
+  **By Username:**
+  - Use when the user already has a Grafana account
+  - User is immediately added to the organization
+  - No email is sent
+
+  **By Email:**
+  - Use for new users
+  - User receives an invitation email
+  - Account is created on first sign-in
+  - Requires email configuration in Grafana
+</Accordion>
+
+### Changing User Roles
+
+Update a user's role to change their permissions:
+
+1. Navigate to **Administration** → **Users and access** → **Users**
+2. Find the user in the list
+3. Click the current role in the **Role** column
+4. Select the new role:
+   - Admin
+   - Editor
+   - Viewer
+   - No basic role
+5. Click **Update**
+
+The role change takes effect immediately.
+
+<Note>
+Organization roles sync from authentication providers (LDAP, OAuth, SAML) on user sign-in. To prevent synchronization, configure `skip_org_role_sync` in your Grafana configuration.
+</Note>
+
+### Managing Pending Invitations
+
+View and manage invitations that haven't been accepted:
+
+1. Navigate to **Administration** → **Users and access** → **Users**
+2. Click **Pending Invites** (visible only if there are pending invitations)
+3. From here you can:
+   - **Copy invite link**: Click to copy the invitation URL
+   - **Cancel invitation**: Click the red **X** to revoke
+
+### Removing Users from Organization
+
+Remove a user when they no longer need access:
+
+1. Navigate to **Administration** → **Users and access** → **Users**
+2. Find the user to remove
+3. Click the red **X** next to their name
+4. Confirm the removal
+
+<Warning>
+Removing a user from an organization doesn't delete their account. They can still access other organizations they belong to.
+</Warning>
+
+## Server User Management
+
+<Info>
+Server Admin features are not available in Grafana Cloud.
+</Info>
+
+Server Admins can manage users across all organizations.
+
+### View All Users
+
+1. Click **Server Admin** (shield icon) in the left sidebar
+2. Click **Users**
+3. View all users across the Grafana instance
+
+### Create New User
+
+1. In **Server Admin** → **Users**
+2. Click **New user**
+3. Fill in user details:
+
+```text
+Name: Jane Smith
+Email: jane@example.com
+Username: jsmith
+Password: (secure password)
+```
+
+4. Click **Create user**
+
+### Grant Server Admin Privileges
+
+1. In **Server Admin** → **Users**
+2. Click on the user
+3. Go to the **Permissions** tab
+4. Toggle **Grafana Admin** to ON
+5. Click **Update**
+
+<Warning>
+Grant Server Admin privileges carefully. Server Admins have complete control over the Grafana instance.
+</Warning>
+
+### Add User to Organization
+
+1. In **Server Admin** → **Users**
+2. Click on the user
+3. Go to the **Organizations** tab
+4. Click **Add user to organization**
+5. Select organization and role
+6. Click **Add to organization**
+
+## Team Management
+
+**Teams** are groups of users within an organization that share common permissions. Teams simplify permission management by allowing you to assign permissions to groups instead of individual users.
+
+### Benefits of Teams
+
+<CardGroup cols={2}>
+  <Card title="Simplified Management" icon="users-gear">
+    Assign permissions once to the team, not to each user
+  </Card>
+  <Card title="Dynamic Membership" icon="user-plus">
+    Add/remove users from teams without changing permissions
+  </Card>
+  <Card title="Organized Access" icon="diagram-project">
+    Group users by department, project, or function
+  </Card>
+  <Card title="Scalability" icon="arrow-up-right-dots">
+    Efficiently manage permissions for large user bases
+  </Card>
+</CardGroup>
+
+### Creating a Team
+
+1. Navigate to **Administration** → **Users and access** → **Teams**
+2. Click **New team**
+3. Enter team details:
+
+```text
+Name: DevOps Team
+Email: devops@example.com
+```
+
+4. Click **Create**
+
+### Adding Team Members
+
+1. Click on the team name
+2. Click **Add member**
+3. Search for and select a user
+4. Choose member type:
+   - **Member**: Regular team member
+   - **Admin**: Can manage team membership and settings
+5. Click **Add to team**
+
+### Team Permissions
+
+Assign dashboard and data source permissions to teams:
+
+1. Navigate to a dashboard or data source
+2. Go to **Permissions** tab
+3. Click **Add a permission**
+4. Select **Team**
+5. Choose the team
+6. Select permission level:
+   - **View**: Read-only access
+   - **Edit**: Modify the resource
+   - **Admin**: Full control including permissions
+7. Click **Save**
+
+<Tip>
+Use teams to implement role-based access patterns like:
+- **Infrastructure Team** → Admin on infrastructure dashboards
+- **Application Team** → Edit on application dashboards
+- **Business Team** → View on all dashboards
+</Tip>
+
+### Team Sync (LDAP/OAuth)
+
+Automatically synchronize team membership from external systems:
+
+1. Configure LDAP or OAuth in `grafana.ini`
+2. Map external groups to Grafana teams
+3. Team membership syncs on user login
+
+<CodeGroup>
+```ini grafana.ini - LDAP Team Sync
+[auth.ldap]
+enabled = true
+config_file = /etc/grafana/ldap.toml
+allow_sign_up = true
+```
+
+```toml ldap.toml
+[[servers.group_mappings]]
+group_dn = "cn=admins,ou=groups,dc=example,dc=com"
+org_role = "Admin"
+grafana_admin = true
+
+[[servers.group_mappings]]
+group_dn = "cn=developers,ou=groups,dc=example,dc=com"
+org_role = "Editor"
+```
+</CodeGroup>
+
+## Dashboard and Folder Permissions
+
+Fine-grained permissions control access to individual dashboards and folders.
+
+### Default Permissions
+
+By default:
+- **Folder creator**: Automatically gets Admin permission
+- **Organization Admins**: Admin on all resources
+- **Editors**: Edit on all dashboards
+- **Viewers**: View on all dashboards
+
+### Setting Folder Permissions
+
+1. Navigate to **Dashboards**
+2. Right-click on a folder → **Permissions**
+3. Click **Add a permission**
+4. Select type:
+   - User
+   - Team
+   - Role (Viewer, Editor, Admin)
+5. Choose permission level:
+   - **View**: Can view dashboards in folder
+   - **Edit**: Can modify dashboards and folder
+   - **Admin**: Full control including permissions
+6. Click **Save**
+
+<Note>
+Permissions on folders cascade to all dashboards within the folder.
+</Note>
+
+### Setting Dashboard Permissions
+
+1. Open a dashboard
+2. Click **Dashboard settings** (gear icon)
+3. Go to **Permissions** tab
+4. Click **Add a permission**
+5. Configure permission same as folders
+6. Click **Save**
+
+<Warning>
+Dashboard permissions override folder permissions. A user with Edit on folder but View on dashboard can only view that specific dashboard.
+</Warning>
+
+## Service Accounts
+
+**Service accounts** provide authentication for applications and services.
+
+### Creating Service Accounts
+
+1. Navigate to **Administration** → **Users and access** → **Service accounts**
+2. Click **Add service account**
+3. Configure:
+
+```text
+Display name: Grafana API Client
+Role: Viewer
+```
+
+4. Click **Create**
+
+### Generating API Tokens
+
+1. Click on the service account
+2. Click **Add service account token**
+3. Set token details:
+
+```text
+Display name: API Token
+Expiration: 1 year
+```
+
+4. Click **Generate token**
+5. Copy the token immediately (it won't be shown again)
+
+<Warning>
+Store service account tokens securely. They provide programmatic access to your Grafana instance.
+</Warning>
+
+### Use Cases for Service Accounts
+
+<AccordionGroup>
+  <Accordion title="CI/CD Pipelines">
+    Use service accounts to:
+    - Deploy dashboards via API
+    - Run automated tests
+    - Export/import configurations
+    
+    ```bash
+    curl -H "Authorization: Bearer ${SERVICE_ACCOUNT_TOKEN}" \
+      https://grafana.example.com/api/dashboards/db \
+      -d @dashboard.json
+    ```
+  </Accordion>
+
+  <Accordion title="External Applications">
+    Integrate Grafana with other tools:
+    - Embed dashboards in applications
+    - Query Grafana APIs
+    - Automate dashboard creation
+  </Accordion>
+
+  <Accordion title="Monitoring and Alerting">
+    Automate operational tasks:
+    - Create/update alerts programmatically
+    - Manage data sources
+    - Generate reports
+  </Accordion>
+</AccordionGroup>
+
+## Data Source Permissions (Enterprise)
+
+<Info>
+Data source permissions are available in **Grafana Enterprise** and **Grafana Cloud**.
+</Info>
+
+By default, all organization members can query any data source. Data source permissions restrict access.
+
+### Permission Levels
+
+- **Query**: Can query the data source
+- **Edit**: Can query and modify configuration  
+- **Admin**: Full control including permission management
+
+### Assigning Data Source Permissions
+
+1. Navigate to **Connections** → **Data sources**
+2. Click on a data source
+3. Go to **Permissions** tab
+4. Click **Add a permission**
+5. Select **User**, **Service Account**, **Team**, or **Role**
+6. Choose the entity
+7. Select permission level
+8. Click **Save**
+
+<CodeGroup>
+```text Example Permissions
+Team: SRE Team → Admin
+Team: Developers → Query
+Role: Viewer → (No access)
+```
+</CodeGroup>
+
+## Role-Based Access Control (Enterprise)
+
+<Info>
+RBAC is available in **Grafana Enterprise** and **Grafana Cloud**.
+</Info>
+
+RBAC provides fine-grained permissions beyond the basic roles.
+
+### RBAC Concepts
+
+- **Role**: Collection of permissions
+- **Permission**: Specific action on a resource (e.g., `dashboards:read`)
+- **Scope**: Limits where permission applies (e.g., `dashboards:uid:abc123`)
+
+### Creating Custom Roles
+
+1. Navigate to **Administration** → **Users and access** → **Roles**
+2. Click **New custom role**
+3. Configure:
+
+```text
+Name: Dashboard Viewer
+Description: Can view all dashboards but not edit
+Permissions:
+  - dashboards:read
+  - folders:read
+  - datasources:query
+```
+
+4. Click **Create**
+
+### Assigning Custom Roles
+
+1. Navigate to **Administration** → **Users and access** → **Users**
+2. Click on a user
+3. Go to **Roles** tab
+4. Click **Add role assignment**
+5. Select the custom role
+6. Click **Add**
+
+### Common RBAC Patterns
+
+<AccordionGroup>
+  <Accordion title="Read-Only Dashboard Access">
+    Grant view access without edit permissions:
+    
+    ```text
+    Permissions:
+      - dashboards:read
+      - folders:read
+      - datasources:query
+    Scope: folders:uid:production-*
+    ```
+  </Accordion>
+
+  <Accordion title="Data Source Administrator">
+    Manage data sources without full admin access:
+    
+    ```text
+    Permissions:
+      - datasources:read
+      - datasources:write
+      - datasources:delete
+      - datasources.permissions:read
+      - datasources.permissions:write
+    ```
+  </Accordion>
+
+  <Accordion title="Alert Manager">
+    Create and manage alerts:
+    
+    ```text
+    Permissions:
+      - alert.rules:read
+      - alert.rules:write
+      - alert.notifications:read
+      - alert.notifications:write
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Authentication Configuration
+
+Grafana supports multiple authentication methods.
+
+### Built-in Authentication
+
+Default username/password authentication.
+
+```ini grafana.ini
+[auth]
+login_cookie_name = grafana_session
+login_maximum_inactive_lifetime_duration = 7d
+login_maximum_lifetime_duration = 30d
+```
+
+### OAuth Authentication
+
+Integrate with OAuth providers (Google, GitHub, GitLab, etc.).
+
+<CodeGroup>
+```ini grafana.ini - GitHub OAuth
+[auth.github]
+enabled = true
+allow_sign_up = true
+client_id = YOUR_CLIENT_ID
+client_secret = YOUR_CLIENT_SECRET
+scopes = user:email,read:org
+auth_url = https://github.com/login/oauth/authorize
+token_url = https://github.com/login/oauth/access_token
+api_url = https://api.github.com/user
+allowed_organizations = my-org
+```
+
+```ini grafana.ini - Google OAuth
+[auth.google]
+enabled = true
+allow_sign_up = true
+client_id = YOUR_CLIENT_ID
+client_secret = YOUR_CLIENT_SECRET
+scopes = openid email profile
+auth_url = https://accounts.google.com/o/oauth2/v2/auth
+token_url = https://oauth2.googleapis.com/token
+api_url = https://openidconnect.googleapis.com/v1/userinfo
+allowed_domains = example.com
+```
+</CodeGroup>
+
+### LDAP Authentication
+
+Integrate with LDAP/Active Directory.
+
+```ini grafana.ini
+[auth.ldap]
+enabled = true
+config_file = /etc/grafana/ldap.toml
+allow_sign_up = true
+sync_cron = "0 0 * * *"
+active_sync_enabled = true
+```
+
+### SAML Authentication (Enterprise)
+
+<Info>
+SAML is available in **Grafana Enterprise**.
+</Info>
+
+```ini grafana.ini
+[auth.saml]
+enabled = true
+single_logout = true
+metadata_url = https://idp.example.com/metadata
+entity_id = https://grafana.example.com
+```
+
+## Best Practices
+
+<CardGroup cols={2}>
+  <Card title="Principle of Least Privilege" icon="shield-halved">
+    Grant minimum necessary permissions
+  </Card>
+  <Card title="Use Teams" icon="users">
+    Manage permissions via teams, not individual users
+  </Card>
+  <Card title="Regular Audits" icon="clipboard-check">
+    Periodically review user access and permissions
+  </Card>
+  <Card title="Service Account Tokens" icon="key">
+    Use service accounts for automation, not user accounts
+  </Card>
+  <Card title="Folder Organization" icon="folder-tree">
+    Organize dashboards in folders with appropriate permissions
+  </Card>
+  <Card title="External Authentication" icon="right-to-bracket">
+    Use OAuth/LDAP/SAML for centralized user management
+  </Card>
+</CardGroup>
+
+### Security Recommendations
+
+<AccordionGroup>
+  <Accordion title="Password Policies">
+    Enforce strong passwords:
+    
+    ```ini grafana.ini
+    [security]
+    admin_password = $__file{/etc/secrets/admin_password}
+    disable_initial_admin_creation = true
+    password_min_length = 12
+    ```
+  </Accordion>
+
+  <Accordion title="Session Management">
+    Configure session timeouts:
+    
+    ```ini grafana.ini
+    [auth]
+    login_maximum_inactive_lifetime_duration = 7d
+    login_maximum_lifetime_duration = 30d
+    token_rotation_interval_minutes = 10
+    ```
+  </Accordion>
+
+  <Accordion title="API Token Management">
+    Best practices for API tokens:
+    - Use service accounts instead of user tokens
+    - Set expiration dates on tokens
+    - Rotate tokens regularly
+    - Revoke unused tokens
+    - Store tokens securely (secrets managers)
+  </Accordion>
+
+  <Accordion title="Audit Logging">
+    Monitor user activity:
+    - Enable audit logging
+    - Review login attempts
+    - Track permission changes
+    - Monitor API usage
+  </Accordion>
+</AccordionGroup>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Configure Data Sources" icon="database" href="/getting-started/adding-datasources">
+    Set up data source permissions
+  </Card>
+  <Card title="Create Dashboards" icon="chart-line" href="/getting-started/first-dashboard">
+    Build dashboards with appropriate permissions
+  </Card>
+</CardGroup>
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="User Can't Access Dashboard">
+    Check:
+    - User's organization role
+    - Dashboard/folder permissions
+    - Team membership if using team permissions
+    - Data source permissions
+    
+    Navigate to dashboard → Permissions to review access.
+  </Accordion>
+
+  <Accordion title="LDAP Sync Not Working">
+    Verify:
+    - LDAP configuration in `grafana.ini` and `ldap.toml`
+    - Network connectivity to LDAP server
+    - LDAP bind credentials
+    - Group DN mappings
+    
+    Check Grafana logs:
+    ```bash
+    tail -f /var/log/grafana/grafana.log | grep -i ldap
+    ```
+  </Accordion>
+
+  <Accordion title="OAuth Login Fails">
+    Common issues:
+    - Incorrect client ID/secret
+    - Wrong redirect URI configuration
+    - Missing scopes
+    - Allowed domains/organizations mismatch
+    
+    Enable debug logging:
+    ```ini
+    [log]
+    filters = oauth:debug
+    ```
+  </Accordion>
+
+  <Accordion title="Permission Changes Not Taking Effect">
+    Solutions:
+    - User may need to log out and back in
+    - Clear browser cache
+    - Check if permissions are syncing from external auth
+    - Verify role/team assignment
+    - Review RBAC custom roles
+  </Accordion>
+</AccordionGroup>

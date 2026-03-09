@@ -1,0 +1,129 @@
+---
+title: Configuration Overview
+description: Learn how to configure Grafana using configuration files and environment variables
+---
+
+Grafana provides flexible configuration options through configuration files and environment variables. This allows you to customize Grafana to suit your deployment needs.
+
+## Configuration Methods
+
+Grafana can be configured using two primary methods:
+
+1. **Configuration Files** - INI-formatted files that define all Grafana settings
+2. **Environment Variables** - Override any configuration file setting using the `GF_<SectionName>_<KeyName>` pattern
+
+## Configuration File Locations
+
+Grafana uses the following configuration files:
+
+- `conf/defaults.ini` - Contains all default settings (do not modify)
+- `conf/custom.ini` - Your custom configuration overrides
+- Custom path via `--config` command-line flag
+
+## Configuration Priority
+
+Configuration values are applied in the following order (later sources override earlier ones):
+
+1. Default values from `conf/defaults.ini`
+2. Custom configuration from `conf/custom.ini`
+3. Environment variables (prefixed with `GF_`)
+4. Command-line arguments
+
+## Environment Variable Format
+
+All configuration settings can be overridden using environment variables with the following format:
+
+```bash
+GF_<SectionName>_<KeyName>
+```
+
+For example:
+- `[server]` section's `http_port` key becomes `GF_SERVER_HTTP_PORT`
+- `[database]` section's `type` key becomes `GF_DATABASE_TYPE`
+- `[auth.github]` section's `client_id` key becomes `GF_AUTH_GITHUB_CLIENT_ID`
+
+## Example Configuration
+
+```ini
+# conf/custom.ini
+[server]
+http_port = 3000
+protocol = http
+domain = localhost
+
+[database]
+type = postgres
+host = 127.0.0.1:5432
+name = grafana
+user = grafana
+password = password
+
+[security]
+admin_user = admin
+admin_password = admin
+secret_key = SW2YcwTIb9zpOOhoPsMm
+```
+
+Equivalent environment variables:
+
+```bash
+export GF_SERVER_HTTP_PORT=3000
+export GF_SERVER_PROTOCOL=http
+export GF_SERVER_DOMAIN=localhost
+export GF_DATABASE_TYPE=postgres
+export GF_DATABASE_HOST=127.0.0.1:5432
+export GF_DATABASE_NAME=grafana
+export GF_DATABASE_USER=grafana
+export GF_DATABASE_PASSWORD=password
+export GF_SECURITY_ADMIN_USER=admin
+export GF_SECURITY_ADMIN_PASSWORD=admin
+export GF_SECURITY_SECRET_KEY=SW2YcwTIb9zpOOhoPsMm
+```
+
+## Key Configuration Sections
+
+- **[server]** - HTTP server settings (protocol, ports, domain)
+- **[database]** - Database connection configuration
+- **[security]** - Security settings (admin credentials, secret keys)
+- **[auth.*]** - Authentication provider settings
+- **[smtp]** - Email server configuration
+- **[paths]** - Data, logs, and plugin paths
+- **[log]** - Logging configuration
+- **[dataproxy]** - Data source proxy settings
+
+## Best Practices
+
+1. **Never modify `defaults.ini`** - Always use `custom.ini` or environment variables
+2. **Use environment variables for secrets** - Avoid storing passwords in configuration files
+3. **Version control your configuration** - Keep `custom.ini` in version control (excluding secrets)
+4. **Document your changes** - Add comments to explain custom settings
+5. **Test configuration changes** - Validate settings in a non-production environment first
+
+## Verifying Configuration
+
+After making configuration changes, restart Grafana and check the logs for any errors:
+
+```bash
+# Check Grafana logs
+tail -f /var/log/grafana/grafana.log
+
+# Or if using systemd
+journalctl -u grafana-server -f
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Configuration File" icon="file-code" href="./configuration-file">
+    Learn about the INI configuration file format and structure
+  </Card>
+  <Card title="Environment Variables" icon="terminal" href="./environment-variables">
+    Configure Grafana using environment variables
+  </Card>
+  <Card title="Database Configuration" icon="database" href="./database">
+    Set up your database backend
+  </Card>
+  <Card title="Authentication" icon="lock" href="./authentication">
+    Configure authentication providers
+  </Card>
+</CardGroup>

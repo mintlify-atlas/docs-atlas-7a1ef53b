@@ -1,0 +1,264 @@
+---
+title: Alerts API
+description: Manage alert notification channels
+---
+
+# Alerts API
+
+The Alerts API provides endpoints for managing alert notification channels and receivers.
+
+## Get Alert Notifiers
+
+Retrieve all available alert notification channel types.
+
+<CodeGroup>
+```bash cURL
+curl -X GET http://localhost:3000/api/alert-notifiers \
+  -u admin:admin
+```
+
+```json Response
+[
+  {
+    "type": "email",
+    "name": "Email",
+    "heading": "Email settings",
+    "description": "Sends notifications using email",
+    "info": "Requires SMTP server to be configured",
+    "options": [
+      {
+        "name": "addresses",
+        "label": "Email addresses",
+        "description": "Comma-separated list of email addresses",
+        "kind": "string",
+        "required": true
+      }
+    ]
+  },
+  {
+    "type": "slack",
+    "name": "Slack",
+    "heading": "Slack settings",
+    "description": "Sends notifications to Slack",
+    "options": [
+      {
+        "name": "url",
+        "label": "Webhook URL",
+        "description": "Slack incoming webhook URL",
+        "kind": "string",
+        "required": true
+      },
+      {
+        "name": "channel",
+        "label": "Channel",
+        "description": "Slack channel or user to send notification to",
+        "kind": "string",
+        "required": false
+      }
+    ]
+  }
+]
+```
+</CodeGroup>
+
+<ParamField query="version" type="string">
+  Schema version ("2" for v2 schema)
+</ParamField>
+
+<ResponseField name="type" type="string">
+  Notification channel type identifier
+</ResponseField>
+
+<ResponseField name="name" type="string">
+  Display name of the notification channel type
+</ResponseField>
+
+<ResponseField name="description" type="string">
+  Description of the notification channel
+</ResponseField>
+
+<ResponseField name="options" type="array">
+  Configuration options for this notification type
+  
+  <ResponseField name="options[].name" type="string">
+    Option field name
+  </ResponseField>
+  
+  <ResponseField name="options[].label" type="string">
+    Display label for the option
+  </ResponseField>
+  
+  <ResponseField name="options[].kind" type="string">
+    Data type: "string", "boolean", "number", etc.
+  </ResponseField>
+  
+  <ResponseField name="options[].required" type="boolean">
+    Whether this option is required
+  </ResponseField>
+</ResponseField>
+
+## Supported Notification Types
+
+Grafana supports various notification channel types:
+
+### Email
+
+Sends alert notifications via email.
+
+**Required Options:**
+- `addresses`: Comma-separated list of email addresses
+
+**Note:** Requires SMTP server to be configured in Grafana.
+
+### Slack
+
+Sends notifications to Slack channels or users.
+
+**Required Options:**
+- `url`: Slack incoming webhook URL
+
+**Optional Options:**
+- `channel`: Slack channel or user (e.g., `#alerts` or `@username`)
+- `username`: Bot username to display
+- `icon_emoji`: Emoji to use as the bot icon
+
+### PagerDuty
+
+Integrates with PagerDuty for incident management.
+
+**Required Options:**
+- `integrationKey`: PagerDuty integration key
+
+**Optional Options:**
+- `severity`: Alert severity level
+- `autoResolve`: Automatically resolve incidents when alert resolves
+
+### Webhook
+
+Sends HTTP POST requests to custom webhooks.
+
+**Required Options:**
+- `url`: Webhook URL endpoint
+
+**Optional Options:**
+- `httpMethod`: HTTP method (POST, PUT)
+- `username`: Basic auth username
+- `password`: Basic auth password
+- `authorization`: Authorization header value
+
+### Microsoft Teams
+
+Sends notifications to Microsoft Teams channels.
+
+**Required Options:**
+- `url`: Microsoft Teams webhook URL
+
+### OpsGenie
+
+Integrates with OpsGenie for alert management.
+
+**Required Options:**
+- `apiKey`: OpsGenie API key
+
+**Optional Options:**
+- `autoClose`: Automatically close alerts
+- `overridePriority`: Override alert priority
+
+### VictorOps
+
+Integrates with VictorOps (now Splunk On-Call).
+
+**Required Options:**
+- `url`: VictorOps webhook URL
+
+### Pushover
+
+Sends push notifications via Pushover.
+
+**Required Options:**
+- `apiToken`: Pushover API token
+- `userKey`: User or group key
+
+**Optional Options:**
+- `priority`: Notification priority (-2 to 2)
+- `sound`: Notification sound
+
+## Alert Notification Schema
+
+The notification schema defines the structure for configuring alert receivers.
+
+### Version 1 Schema (Legacy)
+
+The v1 schema is used for backward compatibility with older alerting configurations.
+
+### Version 2 Schema
+
+To retrieve the v2 schema, add `?version=2` to the request:
+
+<CodeGroup>
+```bash cURL
+curl -X GET "http://localhost:3000/api/alert-notifiers?version=2" \
+  -u admin:admin
+```
+</CodeGroup>
+
+The v2 schema provides enhanced type information and validation rules for modern alerting configurations.
+
+## Unified Alerting
+
+For Grafana v8.0+, the unified alerting system provides enhanced alert management features:
+
+- **Alert Rules**: Define alert conditions and evaluation rules
+- **Contact Points**: Configure notification destinations
+- **Notification Policies**: Route alerts to appropriate contact points
+- **Silences**: Temporarily mute notifications
+
+Refer to the [Unified Alerting documentation](https://grafana.com/docs/grafana/latest/alerting/) for API endpoints specific to unified alerting.
+
+## Examples
+
+### Email Notification Configuration
+
+```json
+{
+  "type": "email",
+  "settings": {
+    "addresses": "ops@example.com,alerts@example.com"
+  }
+}
+```
+
+### Slack Notification Configuration
+
+```json
+{
+  "type": "slack",
+  "settings": {
+    "url": "https://hooks.slack.com/services/T00000000/B00000000/XXXXXXXXXXXXXXXXXXXX",
+    "channel": "#alerts",
+    "username": "Grafana"
+  }
+}
+```
+
+### Webhook Notification Configuration
+
+```json
+{
+  "type": "webhook",
+  "settings": {
+    "url": "https://api.example.com/alerts",
+    "httpMethod": "POST",
+    "username": "grafana",
+    "password": "secret"
+  }
+}
+```
+
+## Permissions
+
+Access to alert notification endpoints requires appropriate permissions:
+
+- Viewing notification types is available to all authenticated users
+- Creating and managing notification channels typically requires Editor or Admin role
+- Organization-level permissions may be required for managing org-wide notifications

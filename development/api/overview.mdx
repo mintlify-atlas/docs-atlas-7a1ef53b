@@ -1,0 +1,82 @@
+---
+title: API Overview
+description: Overview of the Grafana HTTP API for programmatic access
+---
+
+# API Overview
+
+The Grafana HTTP API provides programmatic access to Grafana's core functionality. The same API is used by the frontend to perform operations like managing dashboards, data sources, users, and organizations.
+
+## Base URL
+
+All API requests are made to:
+
+```
+http(s)://<grafana-host>:<port>/api
+```
+
+## API Versioning
+
+The current API version is `0.0.1`. The API uses the following schemes:
+
+- **Schemes**: `http`, `https`
+- **BasePath**: `/api`
+- **Consumes**: `application/json`
+- **Produces**: `application/json`
+
+## Common Response Codes
+
+The API uses standard HTTP response codes:
+
+| Code | Description |
+|------|-------------|
+| 200 | Success |
+| 201 | Created |
+| 400 | Bad Request - Invalid request data |
+| 401 | Unauthorized - Authentication required |
+| 403 | Forbidden - Insufficient permissions |
+| 404 | Not Found - Resource does not exist |
+| 409 | Conflict - Resource already exists |
+| 500 | Internal Server Error |
+
+## Response Format
+
+API responses are returned in JSON format:
+
+### Success Response
+
+```json
+{
+  "message": "Success message",
+  "id": 1,
+  "data": {}
+}
+```
+
+### Error Response
+
+```json
+{
+  "message": "Error message",
+  "error": "Detailed error information"
+}
+```
+
+## Rate Limiting
+
+API rate limiting is configured per organization. Contact your Grafana administrator for specific rate limits.
+
+## API Resources
+
+The Grafana API provides endpoints for:
+
+- [Authentication](/development/api/authentication) - API keys, tokens, and session management
+- [Dashboards](/development/api/dashboards) - Create, read, update, and delete dashboards
+- [Data Sources](/development/api/datasources) - Manage data source configurations
+- [Users](/development/api/users) - User management and profiles
+- [Organizations](/development/api/organizations) - Organization management
+- [Alerts](/development/api/alerts) - Alert notification channels
+
+## Fine-Grained Access Control
+
+If you are running Grafana Enterprise with Fine-grained access control enabled, you need specific permissions for each API endpoint. Refer to the individual endpoint documentation for required permissions.

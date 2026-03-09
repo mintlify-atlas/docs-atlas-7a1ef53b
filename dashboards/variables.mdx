@@ -1,0 +1,589 @@
+---
+title: Dashboard Variables
+description: Create dynamic, interactive dashboards using variables for filtering and templating in Grafana.
+---
+
+# Dashboard Variables
+
+Variables enable you to create interactive, dynamic dashboards that can be filtered and customized without editing. They allow users to change data sources, filter data, and modify queries through dropdown selectors.
+
+## What are Variables?
+
+Variables are placeholders that can be used in:
+
+- Panel queries
+- Panel titles and descriptions
+- Dashboard annotations
+- Dashboard links
+- Alert rule queries
+
+```typescript
+interface BaseVariableModel {
+  id: string;                  // Unique identifier
+  name: string;                // Variable name (used as ${name})
+  type: VariableType;          // Variable type
+  label?: string;              // Display label in UI
+  description?: string;        // Variable description
+  hide: VariableHide;          // Visibility setting
+  skipUrlSync: boolean;        // Skip URL synchronization
+}
+
+enum VariableHide {
+  dontHide = 0,               // Show in dropdown
+  hideLabel = 1,              // Hide label, show value
+  hideVariable = 2            // Completely hide
+}
+```
+
+## Variable Types
+
+### Query Variable
+
+Populate variable values from a data source query:
+
+```typescript
+interface QueryVariableModel extends BaseVariableModel {
+  type: 'query';
+  query: string | Record<string, any>;  // Data source query
+  datasource: DataSourceRef;            // Data source
+  refresh: VariableRefresh;             // When to update
+  regex?: string;                       // Filter/capture regex
+  sort: VariableSort;                   // Sort order
+  multi: boolean;                       // Allow multiple selection
+  includeAll: boolean;                  // Include "All" option
+  allValue?: string;                    // Custom "All" value
+}
+
+enum VariableRefresh {
+  never = 0,          // Never refresh
+  onDashboardLoad = 1,  // On dashboard load
+  onTimeRangeChange = 2  // On time range change
+}
+
+enum VariableSort {
+  disabled = 0,              // No sorting
+  alphabeticalAsc = 1,       // A-Z
+  alphabeticalDesc = 2,      // Z-A
+  numericalAsc = 3,          // 1-9
+  numericalDesc = 4,         // 9-1
+  alphabeticalCaseInsensitiveAsc = 5,
+  alphabeticalCaseInsensitiveDesc = 6
+}
+```
+
+<Steps>
+  <Step title="Create Query Variable">
+    Go to **Dashboard settings** → **Variables** → **New variable**
+  </Step>
+  <Step title="Configure Settings">
+    Set name, label, and type to "Query"
+  </Step>
+  <Step title="Select Data Source">
+    Choose the data source to query
+  </Step>
+  <Step title="Define Query">
+    Write a query that returns variable values
+  </Step>
+  <Step title="Set Refresh Behavior">
+    Choose when the variable updates
+  </Step>
+  <Step title="Save Variable">
+    Click **Apply** to save the variable
+  </Step>
+</Steps>
+
+**Example Query Variable:**
+```typescript
+{
+  name: "server",
+  type: "query",
+  label: "Server",
+  query: "label_values(up, instance)",  // Prometheus query
+  datasource: { type: "prometheus", uid: "prom-uid" },
+  refresh: VariableRefresh.onTimeRangeChange,
+  multi: true,
+  includeAll: true,
+  sort: VariableSort.alphabeticalAsc
+}
+```
+
+### Custom Variable
+
+Define variable values manually:
+
+```typescript
+interface CustomVariableModel extends BaseVariableModel {
+  type: 'custom';
+  query: string;              // Comma-separated values
+  multi: boolean;             // Allow multiple selection
+  includeAll: boolean;        // Include "All" option
+  allValue?: string;          // Custom "All" value
+}
+
+// Example
+{
+  name: "environment",
+  type: "custom",
+  label: "Environment",
+  query: "production,staging,development",
+  multi: false,
+  includeAll: false
+}
+```
+
+### Datasource Variable
+
+Select from available data sources of a specific type:
+
+```typescript
+interface DataSourceVariableModel extends BaseVariableModel {
+  type: 'datasource';
+  query: string;              // Data source type (e.g., "prometheus")
+  regex?: string;             // Filter by name regex
+  multi: boolean;             // Allow multiple selection
+  includeAll: boolean;        // Include "All" option
+}
+
+// Example
+{
+  name: "datasource",
+  type: "datasource",
+  label: "Data Source",
+  query: "prometheus",        // Type of datasource
+  regex: "/prod-.*/",         // Only datasources matching regex
+  multi: false
+}
+```
+
+### Constant Variable
+
+Define a hidden constant value:
+
+```typescript
+interface ConstantVariableModel extends BaseVariableModel {
+  type: 'constant';
+  query: string;              // The constant value
+  hide: VariableHide.hideVariable;  // Usually hidden
+}
+
+// Example
+{
+  name: "cluster",
+  type: "constant",
+  query: "prod-us-east",
+  hide: VariableHide.hideVariable
+}
+```
+
+### Interval Variable
+
+Provide time interval options:
+
+```typescript
+interface IntervalVariableModel extends BaseVariableModel {
+  type: 'interval';
+  query: string;              // Comma-separated intervals
+  auto: boolean;              // Enable auto option
+  auto_count?: number;        // Auto interval count
+  auto_min?: string;          // Minimum auto interval
+}
+
+// Example
+{
+  name: "interval",
+  type: "interval",
+  label: "Interval",
+  query: "1m,5m,10m,30m,1h,6h,12h,1d",
+  auto: true,
+  auto_count: 30,
+  auto_min: "10s"
+}
+```
+
+### Text Box Variable
+
+Allow free-text input:
+
+```typescript
+interface TextBoxVariableModel extends BaseVariableModel {
+  type: 'textbox';
+  query: string;              // Default value
+}
+
+// Example
+{
+  name: "search",
+  type: "textbox",
+  label: "Search",
+  query: ""                   // Default empty
+}
+```
+
+### Ad Hoc Filters
+
+Create dynamic key-value filters:
+
+```typescript
+interface AdHocVariableModel extends BaseVariableModel {
+  type: 'adhoc';
+  datasource: DataSourceRef;  // Data source for filters
+  filters: AdHocVariableFilter[];  // Current filters
+  baseFilters?: AdHocVariableFilter[];  // Default filters
+}
+
+interface AdHocVariableFilter {
+  key: string;                // Label/tag name
+  operator: string;           // =, !=, =~, !~
+  value: string;              // Filter value
+  condition?: string;         // AND/OR (for multiple filters)
+}
+
+// Example
+{
+  name: "filters",
+  type: "adhoc",
+  datasource: { type: "prometheus", uid: "prom-uid" },
+  filters: [
+    { key: "job", operator: "=", value: "api" },
+    { key: "status", operator: "!=", value: "500" }
+  ]
+}
+```
+
+<Note>
+  Ad hoc filters automatically add filter controls to the dashboard and inject filters into queries.
+</Note>
+
+## Using Variables
+
+### In Queries
+
+Reference variables using `${variable_name}` or `$variable_name`:
+
+<CodeGroup>
+```promql Prometheus
+# Single value
+rate(http_requests_total{instance="${server}"}[5m])
+
+# Multi-value with regex
+rate(http_requests_total{instance=~"${server:regex}"}[5m])
+
+# All values
+rate(http_requests_total{instance=~"${server:pipe}"}[5m])
+```
+
+```sql SQL
+# Single value
+SELECT * FROM metrics WHERE host = '${host}'
+
+# Multi-value
+SELECT * FROM metrics WHERE host IN (${host:singlequote})
+
+# Time range variables
+SELECT * FROM metrics 
+WHERE time >= ${__from:date:iso} 
+  AND time <= ${__to:date:iso}
+```
+
+```kusto Kusto
+# Single value
+metrics
+| where host == "${host}"
+
+# Multi-value
+metrics
+| where host in (${host:doublequote})
+```
+</CodeGroup>
+
+### Variable Formats
+
+Format variables for different use cases:
+
+```typescript
+// Available formats
+${variable}              // Default format
+${variable:csv}          // Comma-separated: a,b,c
+${variable:pipe}         // Pipe-separated: a|b|c
+${variable:regex}        // Regex: (a|b|c)
+${variable:json}         // JSON array: ["a","b","c"]
+${variable:singlequote}  // Single quotes: 'a','b','c'
+${variable:doublequote}  // Double quotes: "a","b","c"
+${variable:raw}          // Raw unescaped value
+${variable:text}         // Text label instead of value
+${variable:percentencode} // URL percent encoding
+```
+
+### In Titles and Text
+
+Use variables in panel titles and markdown:
+
+```markdown
+# Dashboard: ${environment} - ${cluster}
+
+## Server: ${server}
+
+Current time range: ${__from:date} to ${__to:date}
+```
+
+### Built-in Variables
+
+Grafana provides built-in time and dashboard variables:
+
+```typescript
+// Time range variables
+$__from          // Start of time range (milliseconds)
+$__to            // End of time range (milliseconds)
+$__interval      // Calculated interval
+$__interval_ms   // Interval in milliseconds
+$__range         // Time range duration
+$__range_s       // Range in seconds
+$__range_ms      // Range in milliseconds
+
+// Dashboard variables
+$__dashboard     // Dashboard name
+$__user_id       // Current user ID
+$__user_login    // Current user login
+$__user_email    // Current user email
+$__org_id        // Organization ID
+$__org_name      // Organization name
+
+// Time formatting
+${__from:date:iso}              // ISO 8601: 2024-01-01T00:00:00Z
+${__from:date:YYYY-MM-DD}       // Custom format: 2024-01-01
+${__from:date:seconds}          // Unix timestamp
+```
+
+## Multi-Value Variables
+
+Allow selecting multiple values:
+
+```typescript
+multi: true          // Enable multi-select
+includeAll: true     // Add "All" option
+allValue: ".*"       // Value when "All" is selected
+```
+
+### Handling Multi-Value in Queries
+
+<CodeGroup>
+```promql Prometheus
+# Regex format for label matching
+metric{label=~"${variable:regex}"}
+
+# Pipe format
+metric{label=~"${variable:pipe}"}
+```
+
+```sql SQL
+# IN clause
+SELECT * FROM table 
+WHERE column IN (${variable:singlequote})
+
+# With All option handling
+SELECT * FROM table 
+WHERE (${variable:raw} = 'All' OR column IN (${variable:singlequote}))
+```
+</CodeGroup>
+
+## Variable Dependencies
+
+Variables can reference other variables:
+
+```typescript
+// First variable: region
+{
+  name: "region",
+  type: "query",
+  query: "label_values(region)"
+}
+
+// Second variable depends on first
+{
+  name: "datacenter",
+  type: "query",
+  query: "label_values(up{region='${region}'}, datacenter)",
+  refresh: VariableRefresh.onTimeRangeChange
+}
+
+// Third variable depends on second
+{
+  name: "server",
+  type: "query",
+  query: "label_values(up{datacenter='${datacenter}'}, instance)",
+  refresh: VariableRefresh.onTimeRangeChange
+}
+```
+
+<Warning>
+  Variable dependencies create a chain reaction. When a parent variable changes, all dependent variables refresh automatically.
+</Warning>
+
+## Variable Regex Filtering
+
+Filter and transform variable values using regex:
+
+```typescript
+regex: string;              // Regex pattern
+
+// Examples
+regex: "/^prod-.*/"         // Only values starting with "prod-"
+regex: "/server-(.*)/"     // Extract capture group: server-web01 → web01
+regex: "/^(?!test).*/"     // Exclude values starting with "test"
+regex: "/(staging|prod)/"  // Only staging or prod
+```
+
+### Regex with Capture Groups
+
+```typescript
+// Input values: prod-web-01, prod-db-01, prod-cache-01
+regex: "/prod-(.*)-\\d+/"  // Extracts: web, db, cache
+
+// Input values: us-east-1a, us-west-2b, eu-west-1c  
+regex: "/(us-.*)-.*/"       // Extracts: us-east-1, us-west-2
+```
+
+## Variable URL Synchronization
+
+Variables sync with URL parameters:
+
+```bash
+# URL format
+https://grafana.example.com/d/dashboard-uid?var-server=web01&var-env=prod
+
+# Multi-value
+?var-server=web01&var-server=web02&var-server=web03
+
+# Disable sync for a variable
+skipUrlSync: true
+```
+
+## Advanced Configuration
+
+### Repeat Panels/Rows by Variable
+
+Create dynamic panels:
+
+```typescript
+// Panel configuration
+{
+  repeat: "server",           // Variable name
+  repeatDirection: "h",       // "h" horizontal, "v" vertical
+  maxPerRow: 4                // Max panels per row
+}
+```
+
+### Variable Value Groups
+
+Group variable values for better organization:
+
+```typescript
+// Query returns: prod:server1, prod:server2, staging:server3
+// Automatically groups by prefix before colon
+query: "label_values(server)"
+```
+
+## Best Practices
+
+<CardGroup cols={2}>
+  <Card title="Naming" icon="tag">
+    Use clear, descriptive variable names: `environment` not `env`, `server_name` not `srv`
+  </Card>
+  <Card title="Labels" icon="text">
+    Provide user-friendly labels that differ from internal variable names
+  </Card>
+  <Card title="Order" icon="sort">
+    Order variables logically: region → datacenter → server
+  </Card>
+  <Card title="Defaults" icon="check">
+    Set sensible default values to avoid empty dashboards
+  </Card>
+</CardGroup>
+
+### Performance Tips
+
+- Use `VariableRefresh.onDashboardLoad` for static data
+- Avoid complex regex patterns on large result sets
+- Limit multi-value selections when possible
+- Use constant variables for frequently used values
+- Cache data source queries when appropriate
+
+## Common Patterns
+
+### Environment Selector
+
+```typescript
+{
+  name: "env",
+  type: "custom",
+  label: "Environment",
+  query: "production,staging,development",
+  current: { value: "production", text: "Production" }
+}
+```
+
+### Dynamic Datasource
+
+```typescript
+{
+  name: "datasource",
+  type: "datasource",
+  label: "Data Source",
+  query: "prometheus",
+  multi: false,
+  includeAll: false
+}
+```
+
+### Time Interval
+
+```typescript
+{
+  name: "rate_interval",
+  type: "interval",
+  label: "Rate Interval",
+  query: "1m,5m,10m,30m,1h",
+  auto: true,
+  auto_count: 30,
+  auto_min: "1m"
+}
+```
+
+## Troubleshooting
+
+### Variable Not Updating
+
+- Check `refresh` setting matches your use case
+- Verify query returns data
+- Check for circular dependencies
+- Review data source permissions
+
+### Empty Dropdown
+
+- Verify query syntax for the data source type
+- Check time range includes data
+- Review regex filter pattern
+- Ensure data source is accessible
+
+### Multi-Value Not Working
+
+- Use appropriate format: `${var:regex}` for labels, `${var:singlequote}` for SQL
+- Check `allValue` configuration
+- Verify query supports multiple values
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Templating" href="/dashboards/templating" icon="code">
+    Learn advanced templating techniques
+  </Card>
+  <Card title="Creating Dashboards" href="/dashboards/creating-dashboards" icon="plus">
+    Apply variables when creating dashboards
+  </Card>
+  <Card title="Panels" href="/dashboards/panels" icon="chart-bar">
+    Use variables in panel queries
+  </Card>
+  <Card title="Sharing" href="/dashboards/sharing" icon="share">
+    Share dashboards with variable values
+  </Card>
+</CardGroup>

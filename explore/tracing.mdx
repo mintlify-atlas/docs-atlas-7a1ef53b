@@ -1,0 +1,505 @@
+---
+title: Distributed Tracing
+description: Learn how to query and analyze distributed traces in Grafana Explore
+---
+
+# Distributed Tracing in Explore
+
+Explore provides comprehensive support for investigating distributed traces from sources like Tempo, Jaeger, Zipkin, and other tracing backends. The trace view helps you understand request flows across microservices, identify performance bottlenecks, and debug distributed system issues.
+
+## What is Distributed Tracing?
+
+Distributed tracing tracks requests as they flow through multiple services in a distributed system. Each trace consists of:
+
+- **Trace** - The entire journey of a request through your system
+- **Spans** - Individual operations within the trace (service calls, database queries, etc.)
+- **Span relationships** - Parent-child relationships showing how operations are nested
+- **Metadata** - Tags, logs, and timing information for each span
+
+<Info>
+Traces help answer questions like "Why was this request slow?" and "Which service caused this error?"
+</Info>
+
+## Trace Visualization
+
+When you query a trace, Explore displays it with several views:
+
+### Timeline View
+
+The default timeline view shows:
+
+- **Horizontal bars** - Each span as a bar, with length representing duration
+- **Vertical alignment** - Time-aligned across all services
+- **Nesting** - Parent-child relationships shown through indentation
+- **Color coding** - Different services in different colors
+- **Error indicators** - Red highlighting for spans with errors
+
+<Tip>
+Click any span to view its details, including tags, logs, and timing information.
+</Tip>
+
+### Span Details
+
+Clicking a span reveals:
+
+- **Duration and timing** - Start time, duration, percentage of total trace time
+- **Service information** - Service name, operation name
+- **Tags** - Key-value metadata (HTTP status, SQL query, error messages, etc.)
+- **Process information** - Host, pod, container details
+- **Logs** - Log events associated with this span
+- **References** - Links to related spans and traces
+
+### Node Graph
+
+The node graph visualization shows:
+
+- **Services as nodes** - Each service in the trace as a circle
+- **Calls as edges** - Arrows showing request flow between services  
+- **Metrics overlay** - Request counts, error rates, latencies
+- **Interactive navigation** - Click nodes to filter or drill down
+
+<Info>
+The node graph is particularly useful for understanding service dependencies and identifying which service-to-service calls are slow or failing.
+</Info>
+
+### Flamegraph
+
+For traces with many spans, the flamegraph view provides:
+
+- **Hierarchical layout** - Spans stacked by call hierarchy
+- **Width = duration** - Wider sections represent longer operations  
+- **Quick identification** - Easily spot the slowest operations
+- **Color coding** - Different services in different colors
+
+## Querying Traces
+
+### Tempo Queries
+
+Tempo is Grafana's open-source tracing backend optimized for large-scale deployments.
+
+#### Query by Trace ID
+
+The most direct way to view a trace:
+
+1. Select **Tempo** as the data source
+2. Choose **TraceQL** query type
+3. Enter the trace ID:
+   ```
+   <trace-id>
+   ```
+4. Click **Run query**
+
+You typically get trace IDs from:
+- Logs containing trace_id fields
+- Error reports from applications  
+- Data links from metrics (exemplars)
+- Other traces (linked traces)
+
+#### TraceQL Queries
+
+TraceQL is Tempo's query language for searching traces by attributes:
+
+**Search by service name:**
+```traceql
+{span.service.name="checkout-service"}
+```
+
+**Search by HTTP status:**
+```traceql
+{span.http.status_code=500}
+```
+
+**Search by duration:**
+```traceql
+{duration > 1s}
+```
+
+**Combine conditions:**
+```traceql
+{
+  span.service.name="api-gateway" &&
+  span.http.method="POST" &&  
+  duration > 500ms
+}
+```
+
+**Search by resource attributes:**
+```traceql
+{resource.cluster="production" && resource.namespace="default"}
+```
+
+<Tip>
+Use the TraceQL query builder to construct queries visually, then switch to code mode for advanced features.
+</Tip>
+
+#### Search Results
+
+TraceQL queries return multiple matching traces:
+
+- Listed in reverse chronological order
+- Shows trace ID, start time, duration, and number of spans
+- Color-coded by status (success/error)
+- Click any trace to view its full timeline
+
+### Service Graph Queries
+
+Tempo can generate service graphs showing request flow patterns:
+
+1. Select **Service Graph** query type
+2. Optionally filter by service or time range  
+3. View the generated node graph showing:
+   - Request rates between services
+   - Error rates
+   - Latency percentiles
+
+### Jaeger Queries
+
+Jaeger provides similar capabilities with its own UI and query syntax:
+
+1. Select **Jaeger** as the data source
+2. Choose **Search** query type
+3. Configure search parameters:
+   - Service name
+   - Operation name  
+   - Tags (key=value pairs)
+   - Min/max duration
+4. Review matching traces
+
+## Trace Navigation
+
+### Expanding and Collapsing Spans
+
+<Steps>
+  <Step title="View top-level spans">
+    By default, the trace view shows the trace structure with services grouped.
+  </Step>
+  
+  <Step title="Expand a service">
+    Click the arrow icon next to a service name to see all spans from that service.
+  </Step>
+  
+  <Step title="Collapse for overview">
+    Click again to collapse and see just the high-level flow.
+  </Step>
+  
+  <Step title="Expand all">
+    Use the **Expand all** button to open all spans at once.
+  </Step>
+</Steps>
+
+### Searching Within a Trace
+
+1. Click the **Find** button (or press Ctrl/Cmd + F)
+2. Enter search terms to find:
+   - Service names
+   - Operation names
+   - Tag values
+   - Log messages
+3. Navigate matches with next/previous buttons
+4. Matching spans highlight in the view
+
+### Critical Path Analysis
+
+The critical path identifies which spans contributed most to overall trace latency:
+
+1. Click **Show critical path**
+2. Spans on the critical path highlight
+3. These are the operations that, if made faster, would reduce total trace time
+4. Focus optimization efforts on critical path spans
+
+<Info>
+The critical path may not always be the longest single span—it's the sequence of dependent spans that determines total duration.
+</Info>
+
+## Data Links and Correlations
+
+Traces connect to other observability data through data links:
+
+### From Traces to Logs
+
+1. Click a span in the trace view
+2. Look for **Logs for this span** in the span details
+3. Click to open logs in a split pane, filtered to:
+   - The span's time range
+   - The service that created the span
+   - The trace_id (if logged)
+
+### From Traces to Metrics  
+
+Data links can connect spans to related metrics:
+
+1. Click a span
+2. Find configured data links (e.g., "View service metrics")
+3. Click to query metrics for that service during the trace period
+
+### Between Traces
+
+Some systems link related traces:
+
+- Asynchronous operations (queues, background jobs)
+- Retry attempts
+- Cascading operations
+
+Look for **Related traces** in the trace view to follow these connections.
+
+## Trace Analysis Patterns
+
+### Finding Slow Requests
+
+<Steps>
+  <Step title="Query by duration">
+    Use TraceQL to find traces slower than a threshold:
+    ```traceql
+    {duration > 2s}
+    ```
+  </Step>
+  
+  <Step title="Sort by duration">
+    In the results list, sort traces by duration to find the slowest.
+  </Step>
+  
+  <Step title="Identify bottleneck spans">
+    Open a slow trace and look for spans that take disproportionate time.
+  </Step>
+  
+  <Step title="Check critical path">
+    Enable critical path view to see which spans are blocking completion.
+  </Step>
+  
+  <Step title="Examine span details">
+    Click slow spans to view tags and logs that might explain the delay.
+  </Step>
+</Steps>
+
+### Debugging Errors
+
+<Steps>
+  <Step title="Search for errors">
+    Query traces with error status:
+    ```traceql
+    {status=error}
+    ```
+    or filter by HTTP status:
+    ```traceql
+    {span.http.status_code>=500}
+    ```
+  </Step>
+  
+  <Step title="Identify failing service">
+    Look for red spans in the timeline—these have errors.
+  </Step>
+  
+  <Step title="Check error details">
+    Click the error span and review:
+    - Error tags (error.message, error.type)
+    - Span logs with stack traces
+    - HTTP status codes
+  </Step>
+  
+  <Step title="Trace error propagation">
+    Follow parent spans to see how the error affected upstream services.
+  </Step>
+</Steps>
+
+### Understanding Dependencies
+
+<Steps>
+  <Step title="View in node graph">
+    Switch to the node graph view to see service relationships.
+  </Step>
+  
+  <Step title="Identify call patterns">
+    Observe which services call which other services.
+  </Step>
+  
+  <Step title="Check external dependencies">
+    Look for spans calling external APIs, databases, or queues.
+  </Step>
+  
+  <Step title="Measure dependency impact">
+    In the timeline, see how much time each downstream service adds.
+  </Step>
+</Steps>
+
+## Split View Workflows
+
+Split view is powerful for trace investigation:
+
+### Trace + Logs
+
+1. Open a trace in the left pane
+2. Click **Split** to open a right pane  
+3. Change right pane to your log data source (Loki, Elasticsearch)
+4. Query logs for the same service and time range:
+   ```logql
+   {service="checkout-service"}
+   ```
+5. Cross-reference trace spans with detailed logs
+
+### Trace + Metrics
+
+1. View a trace showing a slow database query
+2. Split to open metrics pane
+3. Query database metrics during the same time:
+   ```promql
+   rate(database_query_duration_seconds[5m])
+   ```  
+4. Correlate trace latency with overall database performance
+
+### Compare Traces
+
+1. Load a slow trace in the left pane
+2. Split view
+3. Load a normal/fast trace in the right pane
+4. Compare spans side-by-side to identify differences
+
+<Tip>
+Use time sync in split view to align trace timelines for easier comparison.
+</Tip>
+
+## Advanced Features
+
+### Span Filters
+
+Filter visible spans within a trace:
+
+1. Click the **Filter** button
+2. Filter by:
+   - Service name
+   - Duration threshold
+   - Tag values  
+   - Error status
+3. Hidden spans collapse, making it easier to focus on relevant operations
+
+### Export Trace Data
+
+Export trace data for external analysis:
+
+1. Click the **...** menu in the trace view
+2. Choose **Export**
+3. Select format:
+   - **JSON** - Full trace data with all spans and tags
+   - **OTLP** - OpenTelemetry Protocol format
+4. Save or share the exported data
+
+### Trace Comparison
+
+Some tracing backends support built-in trace comparison:
+
+1. Select multiple traces in search results
+2. Click **Compare**
+3. View side-by-side timelines
+4. Spot differences in:
+   - Execution paths
+   - Span durations
+   - Error patterns
+
+## Performance Considerations
+
+### Query Efficiency
+
+<Warning>
+Querying traces by attributes (TraceQL) is more expensive than querying by trace ID. Use specific filters to reduce search scope.
+</Warning>
+
+Optimize trace queries:
+
+- **Add time range filters** - Narrow the search window
+- **Use indexed tags** - Query tags that are indexed in your backend
+- **Combine filters** - Multiple specific filters are better than one broad filter
+- **Limit results** - Set a reasonable limit on returned traces
+
+### Large Traces
+
+Traces with thousands of spans can be slow to render:
+
+- Use span filters to hide irrelevant spans
+- Collapse services you're not investigating  
+- Consider if you need all the detail or just high-level flow
+- Switch to flamegraph view for better performance with many spans
+
+## Best Practices
+
+<AccordionGroup>
+  <Accordion title="Include context in span tags">
+    Ensure your instrumentation adds useful tags:
+    - HTTP method, path, status code
+    - Database query, table name
+    - User ID, request ID  
+    - Feature flags, A/B test variants
+    - Error messages and types
+    
+    Rich tags make traces much more useful for debugging.
+  </Accordion>
+  
+  <Accordion title="Use consistent naming">
+    Standardize span and service names:
+    - Use semantic operation names ("GET /users/:id", not "handler")
+    - Consistent service names across environment
+    - Follow OpenTelemetry semantic conventions
+    - Document naming patterns for your team
+  </Accordion>
+  
+  <Accordion title="Connect traces to logs and metrics">
+    Maximize observability by linking signals:
+    - Include trace_id in log entries
+    - Enable exemplars in Prometheus
+    - Configure data links in Grafana  
+    - Use consistent label names across signals
+  </Accordion>
+  
+  <Accordion title="Sample intelligently">
+    Most systems can't trace every request:
+    - Sample high-traffic endpoints at lower rates
+    - Always trace errors and slow requests (tail sampling)
+    - Sample more in non-production environments  
+    - Configure sampling per service based on traffic
+  </Accordion>
+</AccordionGroup>
+
+## Troubleshooting
+
+### Trace not found
+
+- Verify the trace ID is correct (trace IDs are typically long hex strings)
+- Check the time range includes when the trace was created
+- Confirm the trace was actually sent to the backend
+- Check data retention policies (old traces may be deleted)
+
+### Missing spans
+
+- Verify all services are instrumented
+- Check that context propagation is working (trace IDs passed between services)
+- Look for errors in instrumentation libraries  
+- Review sampling configuration (some spans may be intentionally dropped)
+
+### Incorrect timing
+
+- Verify clock synchronization across services (use NTP)
+- Check for time zone issues in span timestamps
+- Look for instrumentation errors (start/end times swapped)
+
+### No data links
+
+- Verify data links are configured in the data source settings
+- Check that trace fields match data link expectations (trace_id format)
+- Confirm you have access to linked data sources
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Querying Metrics" icon="chart-line" href="./querying-metrics">
+    Learn how to query and visualize metrics data
+  </Card>
+  
+  <Card title="Querying Logs" icon="file-lines" href="./querying-logs">
+    Explore log querying and analysis techniques  
+  </Card>
+</CardGroup>
+
+## Additional Resources
+
+- [Tempo Documentation](/datasources/tempo)
+- [Jaeger Documentation](/datasources/jaeger)  
+- [OpenTelemetry Instrumentation](https://opentelemetry.io/docs/instrumentation/)
+- [TraceQL Language Guide](https://grafana.com/docs/tempo/latest/traceql/)

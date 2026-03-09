@@ -1,0 +1,467 @@
+---
+title: 'Installing Grafana'
+description: 'Learn how to install Grafana using Docker, APT, or standalone binaries'
+---
+
+# Installing Grafana
+
+Grafana is available in two editions: **Grafana Enterprise** (recommended) and **Grafana Open Source**. Grafana Enterprise is free and includes all OSS features, with the option to upgrade to the full Enterprise feature set.
+
+This guide covers multiple installation methods to help you get Grafana running quickly.
+
+## Prerequisites
+
+Before you begin, ensure you have:
+
+- A supported operating system (Linux, macOS, Windows, or Docker)
+- Appropriate system permissions for installation
+- Network access to download Grafana packages
+
+## Installation Methods
+
+<CardGroup cols={2}>
+  <Card title="Docker" icon="docker" href="#docker-installation">
+    Run Grafana in a container with persistent storage
+  </Card>
+  <Card title="Debian/Ubuntu" icon="ubuntu" href="#debian-ubuntu-installation">
+    Install using APT package manager
+  </Card>
+  <Card title="Standalone Binary" icon="download" href="#standalone-binary-installation">
+    Run Grafana as a standalone application
+  </Card>
+  <Card title="Docker Compose" icon="docker" href="#docker-compose-installation">
+    Deploy Grafana with docker-compose
+  </Card>
+</CardGroup>
+
+## Docker Installation
+
+Docker is the fastest way to get Grafana running.
+
+### Quick Start
+
+Run the latest Grafana Enterprise version:
+
+```bash
+docker run -d -p 3000:3000 --name=grafana grafana/grafana-enterprise
+```
+
+Access Grafana at `http://localhost:3000` with default credentials `admin`/`admin`.
+
+<Accordion title="Docker Run Command Explanation">
+  - `docker run` - Creates and starts a new container
+  - `-d` - Runs container in detached mode (background)
+  - `-p 3000:3000` - Maps container port 3000 to host port 3000
+  - `--name=grafana` - Assigns a name to the container for easy reference
+  - `grafana/grafana-enterprise` - The Docker image to use
+</Accordion>
+
+### Persistent Storage with Docker Volumes
+
+By default, Grafana data is lost when the container is removed. Use Docker volumes to persist your data:
+
+```bash
+# Create a persistent volume
+docker volume create grafana-storage
+
+# Verify volume creation
+docker volume inspect grafana-storage
+
+# Start Grafana with persistent storage
+docker run -d -p 3000:3000 --name=grafana \
+  --volume grafana-storage:/var/lib/grafana \
+  grafana/grafana-enterprise
+```
+
+### Using Bind Mounts
+
+For direct access to Grafana data on your host filesystem:
+
+```bash
+# Create a directory for data
+mkdir data
+
+# Start Grafana with bind mount
+docker run -d -p 3000:3000 --name=grafana \
+  --user "$(id -u)" \
+  --volume "$PWD/data:/var/lib/grafana" \
+  grafana/grafana-enterprise
+```
+
+### Environment Variables
+
+Configure Grafana using environment variables:
+
+```bash
+docker run -d -p 3000:3000 --name=grafana \
+  -e "GF_SERVER_ROOT_URL=http://my.grafana.server/" \
+  -e "GF_LOG_LEVEL=debug" \
+  -e "GF_SECURITY_ADMIN_PASSWORD=mySecurePassword" \
+  grafana/grafana-enterprise
+```
+
+### Installing Plugins
+
+Install plugins at container startup:
+
+```bash
+docker run -d -p 3000:3000 --name=grafana \
+  -e "GF_PLUGINS_PREINSTALL=grafana-clock-panel,grafana-simple-json-datasource" \
+  grafana/grafana-enterprise
+```
+
+<Note>
+To specify a plugin version, use the format: `plugin-name@version`. Example: `grafana-clock-panel@1.0.1`
+</Note>
+
+### Managing Docker Containers
+
+```bash
+# View running containers
+docker ps
+
+# Stop Grafana
+docker stop grafana
+
+# Start existing container
+docker start grafana
+
+# View logs
+docker logs grafana
+
+# Remove container
+docker rm grafana
+```
+
+## Docker Compose Installation
+
+Docker Compose simplifies multi-container deployments.
+
+### Prerequisites
+
+Verify Docker Compose is installed:
+
+```bash
+docker compose version
+```
+
+### Basic Configuration
+
+Create a `docker-compose.yaml` file:
+
+```yaml docker-compose.yaml
+services:
+  grafana:
+    image: grafana/grafana-enterprise
+    container_name: grafana
+    restart: unless-stopped
+    ports:
+      - '3000:3000'
+    volumes:
+      - grafana-storage:/var/lib/grafana
+    environment:
+      - GF_SERVER_ROOT_URL=http://my.grafana.server/
+      - GF_PLUGINS_PREINSTALL=grafana-clock-panel
+
+volumes:
+  grafana-storage: {}
+```
+
+### Start and Manage
+
+```bash
+# Start Grafana
+docker compose up -d
+
+# View logs
+docker compose logs -f grafana
+
+# Stop Grafana
+docker compose down
+
+# Restart Grafana
+docker compose restart grafana
+```
+
+## Debian Ubuntu Installation
+
+Install Grafana on Debian or Ubuntu using the APT package manager.
+
+### Install from APT Repository
+
+This method provides automatic updates when you run `apt-get update`.
+
+#### Step 1: Install Prerequisites
+
+```bash
+sudo apt-get install -y apt-transport-https wget gnupg
+```
+
+#### Step 2: Add Grafana GPG Key
+
+```bash
+sudo mkdir -p /etc/apt/keyrings
+sudo wget -O /etc/apt/keyrings/grafana.asc https://apt.grafana.com/gpg-full.key
+sudo chmod 644 /etc/apt/keyrings/grafana.asc
+```
+
+#### Step 3: Add Grafana Repository
+
+For stable releases:
+
+```bash
+echo "deb [signed-by=/etc/apt/keyrings/grafana.asc] https://apt.grafana.com stable main" | sudo tee -a /etc/apt/sources.list.d/grafana.list
+```
+
+For beta releases:
+
+```bash
+echo "deb [signed-by=/etc/apt/keyrings/grafana.asc] https://apt.grafana.com beta main" | sudo tee -a /etc/apt/sources.list.d/grafana.list
+```
+
+#### Step 4: Update Package List
+
+```bash
+sudo apt-get update
+```
+
+#### Step 5: Install Grafana
+
+For Grafana Enterprise (recommended):
+
+```bash
+sudo apt-get install grafana-enterprise
+```
+
+For Grafana OSS:
+
+```bash
+sudo apt-get install grafana
+```
+
+#### Step 6: Start Grafana Service
+
+```bash
+# Start Grafana server
+sudo systemctl start grafana-server
+
+# Enable Grafana to start on boot
+sudo systemctl enable grafana-server
+
+# Check service status
+sudo systemctl status grafana-server
+```
+
+Access Grafana at `http://localhost:3000` with default credentials `admin`/`admin`.
+
+### Install Using DEB Package
+
+For manual installation without automatic updates:
+
+1. Navigate to the [Grafana download page](https://grafana.com/grafana/download)
+2. Select your desired version and edition
+3. Copy and run the installation commands provided
+
+Example:
+
+```bash
+wget https://dl.grafana.com/enterprise/release/grafana-enterprise_11.0.0_amd64.deb
+sudo dpkg -i grafana-enterprise_11.0.0_amd64.deb
+```
+
+## Standalone Binary Installation
+
+Run Grafana as a standalone binary without package managers.
+
+### Step 1: Download Binary
+
+Download the appropriate binary from the [Grafana download page](https://grafana.com/grafana/download).
+
+### Step 2: Create Grafana User
+
+```bash
+sudo useradd -r -s /bin/false grafana
+```
+
+### Step 3: Extract and Move Binary
+
+```bash
+# Extract the downloaded archive
+tar -zxvf grafana-*.tar.gz
+
+# Move to installation directory
+sudo mv grafana-*/ /usr/local/grafana
+
+# Set ownership
+sudo chown -R grafana:users /usr/local/grafana
+```
+
+### Step 4: Create Systemd Service
+
+Create `/etc/systemd/system/grafana-server.service`:
+
+```ini /etc/systemd/system/grafana-server.service
+[Unit]
+Description=Grafana Server
+After=network.target
+
+[Service]
+Type=simple
+User=grafana
+Group=users
+ExecStart=/usr/local/grafana/bin/grafana server --config=/usr/local/grafana/conf/grafana.ini --homepath=/usr/local/grafana
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target
+```
+
+### Step 5: Initialize Data Directory
+
+Start Grafana manually once to create the data directory:
+
+```bash
+/usr/local/grafana/bin/grafana server --homepath /usr/local/grafana
+```
+
+Press `CTRL+C` to stop, then set ownership:
+
+```bash
+sudo chown -R grafana:users /usr/local/grafana
+```
+
+### Step 6: Enable and Start Service
+
+```bash
+# Reload systemd
+sudo systemctl daemon-reload
+
+# Enable service
+sudo systemctl enable grafana-server
+
+# Start service
+sudo systemctl start grafana-server
+
+# Check status
+sudo systemctl status grafana-server
+```
+
+## First Login
+
+After installation:
+
+1. Open your browser and navigate to `http://localhost:3000`
+2. Login with default credentials:
+   - Username: `admin`
+   - Password: `admin`
+3. You'll be prompted to change the password on first login
+
+<Warning>
+Change the default admin password immediately to secure your Grafana instance.
+</Warning>
+
+## Configuration
+
+Grafana configuration is stored in `grafana.ini`. Common configuration locations:
+
+- **Docker**: Use environment variables prefixed with `GF_`
+- **APT install**: `/etc/grafana/grafana.ini`
+- **Standalone**: `/usr/local/grafana/conf/grafana.ini`
+
+Example environment variable mapping:
+
+```bash
+# Set server root URL
+GF_SERVER_ROOT_URL=http://my.grafana.server/
+
+# Set security admin password
+GF_SECURITY_ADMIN_PASSWORD=mySecurePassword
+
+# Enable debug logging
+GF_LOG_LEVEL=debug
+```
+
+## Uninstalling Grafana
+
+### Docker
+
+```bash
+docker stop grafana
+docker rm grafana
+docker volume rm grafana-storage  # Remove data
+```
+
+### Debian/Ubuntu
+
+```bash
+# Stop service
+sudo systemctl stop grafana-server
+
+# Remove package
+sudo apt-get remove grafana-enterprise
+# OR
+sudo apt-get remove grafana
+
+# Remove repository (optional)
+sudo rm /etc/apt/sources.list.d/grafana.list
+```
+
+### Standalone Binary
+
+```bash
+# Stop service
+sudo systemctl stop grafana-server
+sudo systemctl disable grafana-server
+
+# Remove files
+sudo rm /etc/systemd/system/grafana-server.service
+sudo rm -rf /usr/local/grafana
+
+# Reload systemd
+sudo systemctl daemon-reload
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Create Your First Dashboard" icon="chart-line" href="/getting-started/first-dashboard">
+    Learn how to build visualizations
+  </Card>
+  <Card title="Add Data Sources" icon="database" href="/getting-started/adding-datasources">
+    Connect Grafana to your data
+  </Card>
+</CardGroup>
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="Port 3000 Already in Use">
+    If port 3000 is already occupied, map to a different port:
+    
+    ```bash
+    docker run -d -p 3001:3000 --name=grafana grafana/grafana-enterprise
+    ```
+    
+    Access Grafana at `http://localhost:3001`
+  </Accordion>
+
+  <Accordion title="Permission Denied Errors">
+    Ensure the Grafana user has proper permissions:
+    
+    ```bash
+    sudo chown -R grafana:grafana /var/lib/grafana
+    ```
+  </Accordion>
+
+  <Accordion title="Service Won't Start">
+    Check service logs:
+    
+    ```bash
+    # Systemd
+    sudo journalctl -u grafana-server -f
+    
+    # Docker
+    docker logs grafana
+    ```
+  </Accordion>
+</AccordionGroup>

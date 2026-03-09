@@ -1,0 +1,570 @@
+---
+title: InfluxDB Data Source
+description: Query time series data from InfluxDB using Flux, InfluxQL, or SQL
+---
+
+# InfluxDB Data Source
+
+InfluxDB is a time series database optimized for high-write and query loads. Grafana supports querying InfluxDB using three query languages: InfluxQL (1.x), Flux (2.x and 1.8+), and SQL (3.x).
+
+## Overview
+
+The InfluxDB data source provides:
+- Support for InfluxQL, Flux, and SQL query languages
+- Time series visualization and aggregation
+- Retention policy and bucket management
+- Template variables from InfluxDB data
+- Annotation support
+
+<Info>
+Source: `public/app/plugins/datasource/influxdb/`
+</Info>
+
+## Configuration
+
+### Query Language Selection
+
+First, select your query language based on your InfluxDB version:
+
+<Tabs>
+  <Tab title="InfluxQL">
+    **For InfluxDB 1.x**
+    
+    SQL-like query language for InfluxDB 1.x:
+    - Familiar SQL-style syntax
+    - Database and retention policy support
+    - Continuous queries and retention policies
+  </Tab>
+  
+  <Tab title="Flux">
+    **For InfluxDB 2.x and 1.8+**
+    
+    Functional scripting language:
+    - Pipeline-based query construction
+    - Advanced data transformations
+    - Bucket-based organization
+  </Tab>
+  
+  <Tab title="SQL">
+    **For InfluxDB 3.x**
+    
+    Native SQL support:
+    - Standard SQL syntax
+    - Better performance on InfluxDB 3.0+
+    - Familiar to SQL users
+  </Tab>
+</Tabs>
+
+<Info>
+Source: `public/app/plugins/datasource/influxdb/components/editor/config/ConfigEditor.tsx:21-43`
+</Info>
+
+### Connection Settings
+
+<Steps>
+  <Step title="Add Data Source">
+    Navigate to **Configuration** > **Data Sources** > **Add data source** > **InfluxDB**
+  </Step>
+  
+  <Step title="Select Query Language">
+    Choose InfluxQL, Flux, or SQL based on your InfluxDB version
+  </Step>
+  
+  <Step title="Configure URL">
+    Set the InfluxDB server URL:
+    
+    **InfluxDB 1.x (InfluxQL):**
+    ```
+    http://localhost:8086
+    ```
+    
+    **InfluxDB 2.x (Flux):**
+    ```
+    http://localhost:8086
+    ```
+    
+    **InfluxDB 3.x (SQL):**
+    ```
+    https://your-instance.influxdata.com
+    ```
+  </Step>
+  
+  <Step title="Authentication">
+    **InfluxQL (1.x):**
+    - Enable Basic Auth
+    - Set username and password
+    
+    **Flux (2.x) / SQL (3.x):**
+    - Set organization name
+    - Provide API token in secure settings
+  </Step>
+  
+  <Step title="Database/Bucket Settings">
+    **InfluxQL:**
+    - Database: `telegraf`
+    - Retention Policy: `autogen` (optional)
+    
+    **Flux/SQL:**
+    - Default Bucket: `my-bucket`
+  </Step>
+</Steps>
+
+### Data Source Options
+
+<ParamField path="version" type="string" required>
+  Query language: `InfluxQL`, `Flux`, or `SQL`
+</ParamField>
+
+<ParamField path="database" type="string">
+  **InfluxQL only**: Database name
+</ParamField>
+
+<ParamField path="organization" type="string">
+  **Flux/SQL only**: Organization name
+</ParamField>
+
+<ParamField path="defaultBucket" type="string">
+  **Flux/SQL only**: Default bucket for queries
+</ParamField>
+
+<ParamField path="maxSeries" type="number" default="1000">
+  Limit the number of series/tables processed. Prevents performance issues with high-cardinality data.
+</ParamField>
+
+<Info>
+Source: `public/app/plugins/datasource/influxdb/components/editor/config/ConfigEditor.tsx:141-158`
+</Info>
+
+## InfluxQL Query Language
+
+### Basic Queries
+
+Select data from a measurement:
+
+```sql
+SELECT "value" FROM "cpu" WHERE time >= now() - 1h
+```
+
+### Aggregations
+
+**Mean:**
+
+```sql
+SELECT mean("value") FROM "cpu" WHERE $timeFilter GROUP BY time($__interval)
+```
+
+**Multiple aggregations:**
+
+```sql
+SELECT 
+  mean("value") AS "avg",
+  max("value") AS "max",
+  min("value") AS "min"
+FROM "cpu"
+WHERE $timeFilter
+GROUP BY time($__interval)
+```
+
+### Group By Tags
+
+Group by tag values:
+
+```sql
+SELECT mean("value") 
+FROM "cpu" 
+WHERE $timeFilter 
+GROUP BY time($__interval), "host"
+```
+
+### Sub-queries
+
+```sql
+SELECT mean("max") FROM (
+  SELECT max("value") FROM "cpu" 
+  WHERE $timeFilter 
+  GROUP BY time(1m), "host"
+) GROUP BY time(5m)
+```
+
+### Macros
+
+Grafana provides InfluxQL macros:
+
+- `$timeFilter`: Expands to `time >= <start> AND time <= <end>`
+- `$__interval`: Auto-calculated time interval
+- `$__interval_ms`: Interval in milliseconds
+
+## Flux Query Language
+
+### Basic Queries
+
+Query data from a bucket:
+
+```flux
+from(bucket: "telegraf")
+  |> range(start: -1h)
+  |> filter(fn: (r) => r._measurement == "cpu")
+  |> filter(fn: (r) => r._field == "usage_idle")
+```
+
+### Aggregations
+
+**Mean:**
+
+```flux
+from(bucket: "telegraf")
+  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)
+  |> filter(fn: (r) => r._measurement == "cpu")
+  |> filter(fn: (r) => r._field == "usage_system")
+  |> aggregateWindow(every: v.windowPeriod, fn: mean)
+```
+
+**Custom aggregation:**
+
+```flux
+from(bucket: "telegraf")
+  |> range(start: -1h)
+  |> filter(fn: (r) => r._measurement == "mem")
+  |> aggregateWindow(
+      every: 1m,
+      fn: (column, tables=<-) => tables |> mean(column: column)
+    )
+```
+
+### Group By
+
+Group by tags:
+
+```flux
+from(bucket: "telegraf")
+  |> range(start: -1h)
+  |> filter(fn: (r) => r._measurement == "cpu")
+  |> group(columns: ["host", "_field"])
+  |> mean()
+```
+
+### Transformations
+
+**Map:**
+
+```flux
+from(bucket: "telegraf")
+  |> range(start: -1h)
+  |> filter(fn: (r) => r._measurement == "temp")
+  |> map(fn: (r) => ({ r with _value: (r._value * 9.0 / 5.0) + 32.0 }))
+```
+
+**Join:**
+
+```flux
+cpu = from(bucket: "telegraf")
+  |> range(start: -1h)
+  |> filter(fn: (r) => r._measurement == "cpu")
+
+mem = from(bucket: "telegraf")
+  |> range(start: -1h)
+  |> filter(fn: (r) => r._measurement == "mem")
+
+join(
+  tables: {cpu: cpu, mem: mem},
+  on: ["_time", "host"]
+)
+```
+
+### Flux Variables
+
+Grafana provides Flux variables:
+
+- `v.timeRangeStart`: Dashboard start time
+- `v.timeRangeStop`: Dashboard stop time
+- `v.windowPeriod`: Auto-calculated window period
+- `v.defaultBucket`: Configured default bucket
+
+## SQL Query Language (InfluxDB 3.x)
+
+### Basic Queries
+
+Select from a measurement:
+
+```sql
+SELECT time, host, usage_idle
+FROM cpu
+WHERE time >= now() - INTERVAL '1 hour'
+ORDER BY time
+```
+
+### Aggregations
+
+```sql
+SELECT 
+  DATE_BIN(INTERVAL '5 minutes', time) AS time_bucket,
+  AVG(usage_system) AS avg_usage,
+  MAX(usage_system) AS max_usage
+FROM cpu
+WHERE time >= now() - INTERVAL '1 hour'
+GROUP BY time_bucket
+ORDER BY time_bucket
+```
+
+### Group By
+
+```sql
+SELECT 
+  DATE_BIN(INTERVAL '1 minute', time) AS time_bucket,
+  host,
+  AVG(usage_idle) AS avg_idle
+FROM cpu
+WHERE time >= now() - INTERVAL '6 hours'
+GROUP BY time_bucket, host
+ORDER BY time_bucket
+```
+
+### Window Functions
+
+```sql
+SELECT 
+  time,
+  host,
+  usage_idle,
+  AVG(usage_idle) OVER (
+    PARTITION BY host 
+    ORDER BY time 
+    ROWS BETWEEN 5 PRECEDING AND CURRENT ROW
+  ) AS moving_avg
+FROM cpu
+WHERE time >= now() - INTERVAL '1 hour'
+```
+
+## Query Editor
+
+### Visual Query Builder (InfluxQL)
+
+<Steps>
+  <Step title="Select Measurement">
+    Choose measurement from dropdown (e.g., `cpu`)
+  </Step>
+  
+  <Step title="Add Tag Filters">
+    Filter by tag values:
+    - Tag: `host`
+    - Operator: `=`
+    - Value: `server-01`
+  </Step>
+  
+  <Step title="Select Fields">
+    Choose fields to query:
+    - `usage_idle`
+    - `usage_system`
+  </Step>
+  
+  <Step title="Add Aggregation">
+    Select aggregation function:
+    - `mean()`
+    - `max()`
+    - `sum()`
+  </Step>
+  
+  <Step title="Group By">
+    Add grouping:
+    - `time($__interval)`
+    - Tag: `host`
+  </Step>
+</Steps>
+
+### Code Editor
+
+Switch to code mode for advanced queries:
+- Full query language support
+- Syntax highlighting
+- Query validation
+- Variable substitution preview
+
+## Template Variables
+
+### InfluxQL Variables
+
+**Show tag values:**
+
+```sql
+SHOW TAG VALUES WITH KEY = "host"
+```
+
+**Show tag values with condition:**
+
+```sql
+SHOW TAG VALUES FROM "cpu" WITH KEY = "host" WHERE region = '$region'
+```
+
+**Show measurements:**
+
+```sql
+SHOW MEASUREMENTS
+```
+
+**Show field keys:**
+
+```sql
+SHOW FIELD KEYS FROM "cpu"
+```
+
+### Flux Variables
+
+**Get tag values:**
+
+```flux
+import "influxdata/influxdb/v1"
+
+v1.tagValues(
+  bucket: "telegraf",
+  tag: "host"
+)
+```
+
+**Get measurements:**
+
+```flux
+import "influxdata/influxdb/schema"
+
+schema.measurements(bucket: "telegraf")
+```
+
+### SQL Variables (InfluxDB 3.x)
+
+**Get distinct values:**
+
+```sql
+SELECT DISTINCT host FROM cpu
+```
+
+**Get values with filter:**
+
+```sql
+SELECT DISTINCT region FROM cpu WHERE datacenter = '$datacenter'
+```
+
+### Using Variables in Queries
+
+**InfluxQL:**
+
+```sql
+SELECT mean("value") FROM "cpu" WHERE "host" =~ /^$host$/ AND $timeFilter
+```
+
+**Flux:**
+
+```flux
+from(bucket: "$bucket")
+  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)
+  |> filter(fn: (r) => r.host == "${host}")
+```
+
+**SQL:**
+
+```sql
+SELECT * FROM cpu WHERE host = '$host' AND time >= now() - INTERVAL '1 hour'
+```
+
+## Performance Optimization
+
+<CardGroup cols={2}>
+  <Card title="Use Retention Policies" icon="clock">
+    Configure appropriate retention policies to reduce data volume:
+    ```sql
+    SELECT mean("value") FROM "telegraf"."autogen"."cpu"
+    ```
+  </Card>
+  
+  <Card title="Limit Series" icon="chart-line">
+    Set `maxSeries` to prevent high-cardinality issues:
+    ```yaml
+    maxSeries: 1000
+    ```
+  </Card>
+  
+  <Card title="Use Downsampling" icon="compress">
+    Query pre-aggregated data from continuous queries:
+    ```sql
+    SELECT mean FROM "cpu_mean_5m" WHERE $timeFilter
+    ```
+  </Card>
+  
+  <Card title="Add Tag Filters" icon="filter">
+    Always filter by tags to reduce query scope:
+    ```flux
+    |> filter(fn: (r) => r.host == "server-01")
+    ```
+  </Card>
+</CardGroup>
+
+## Annotations
+
+Create annotations from InfluxDB data:
+
+**InfluxQL:**
+
+```sql
+SELECT "message" FROM "events" WHERE $timeFilter
+```
+
+**Flux:**
+
+```flux
+from(bucket: "events")
+  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)
+  |> filter(fn: (r) => r._measurement == "deployments")
+```
+
+Configure:
+- **Text Column**: Field containing annotation text
+- **Tags Column**: Field containing comma-separated tags
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="No data returned">
+    - Verify database/bucket name is correct
+    - Check retention policy (InfluxQL) or bucket retention (Flux/SQL)
+    - Confirm time range includes data points
+    - Test query in InfluxDB CLI or UI
+    - Review time field format and timezone
+  </Accordion>
+  
+  <Accordion title="Authentication failed">
+    - **InfluxQL**: Verify username/password in Basic Auth
+    - **Flux/SQL**: Check API token has correct permissions
+    - Confirm organization name is correct (Flux/SQL)
+    - Review InfluxDB user permissions
+  </Accordion>
+  
+  <Accordion title="Query timeout">
+    - Reduce time range
+    - Add more tag filters
+    - Lower `maxSeries` setting
+    - Use continuous queries for pre-aggregation
+    - Increase query timeout in InfluxDB config
+  </Accordion>
+  
+  <Accordion title="Too many series">
+    - Lower `maxSeries` in data source settings
+    - Add tag filters to reduce cardinality
+    - Use more specific measurement names
+    - Review tag cardinality: `SHOW TAG CARDINALITY`
+  </Accordion>
+</AccordionGroup>
+
+## Best Practices
+
+1. **Choose the right query language**: Use InfluxQL for 1.x, Flux for 2.x, SQL for 3.x
+2. **Use tag filters**: Always filter by tags before field operations
+3. **Configure retention policies**: Set appropriate data retention for your use case
+4. **Avoid SELECT ***: Query only needed fields
+5. **Use continuous queries**: Pre-aggregate data for common queries
+6. **Monitor cardinality**: Keep tag cardinality low (< 100k series per measurement)
+7. **Leverage macros/variables**: Use Grafana's built-in time variables
+
+## Further Reading
+
+- [InfluxDB Official Documentation](https://docs.influxdata.com/)
+- [InfluxQL Reference](https://docs.influxdata.com/influxdb/v1.8/query_language/)
+- [Flux Language Guide](https://docs.influxdata.com/flux/v0.x/)
+- [InfluxDB 3.0 SQL Reference](https://docs.influxdata.com/influxdb/cloud-serverless/query-data/sql/)

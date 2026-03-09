@@ -1,0 +1,588 @@
+---
+title: Authentication
+description: Configure authentication methods in Grafana including OAuth, LDAP, SAML, and JWT
+---
+
+Grafana supports multiple authentication methods to integrate with your organization's identity infrastructure. This guide covers the configuration and implementation details of each authentication method.
+
+## Overview
+
+Authentication in Grafana is handled through the authentication service (`pkg/services/auth/`) and middleware layer (`pkg/middleware/auth.go`). The system supports:
+
+- Basic authentication (username/password)
+- OAuth 2.0 providers (GitHub, Google, Azure AD, Generic OAuth)
+- LDAP/Active Directory
+- SAML 2.0
+- JWT (JSON Web Tokens)
+- Auth proxy
+
+## Basic Authentication
+
+Basic authentication is enabled by default and uses Grafana's internal user database.
+
+### Configuration
+
+```ini
+[auth.basic]
+enabled = true
+
+# Enable stronger password policy
+password_policy = false
+```
+
+When `password_policy` is enabled, passwords must:
+- Have a minimum of 12 characters
+- Contain at least 1 uppercase character
+- Contain at least 1 lowercase character
+- Contain at least 1 digit
+- Contain at least 1 symbol
+
+Reference: `conf/defaults.ini:949-959`
+
+## OAuth 2.0 Authentication
+
+Grafana supports multiple OAuth providers through a unified OAuth strategy implementation.
+
+### Supported Providers
+
+- GitHub
+- Google
+- Azure AD
+- Generic OAuth
+- Okta
+- GitLab
+
+Implementation: `pkg/services/ssosettings/strategies/oauth_strategy.go`
+
+### Generic OAuth Configuration
+
+```ini
+[auth.generic_oauth]
+name = OAuth
+enabled = false
+allow_sign_up = true
+auto_login = false
+
+client_id = some_id
+client_secret = YOUR_SECRET
+
+scopes = user:email
+empty_scopes = false
+
+auth_url = https://provider.com/oauth/authorize
+token_url = https://provider.com/oauth/token
+api_url = https://provider.com/api/user
+
+# Email and user attribute mapping
+email_attribute_name = email:primary
+email_attribute_path =
+login_attribute_path =
+name_attribute_path =
+
+# Role mapping from OAuth provider
+role_attribute_path =
+role_attribute_strict = false
+
+# Organization mapping
+org_attribute_path =
+org_mapping =
+
+# Group/team mapping
+groups_attribute_path =
+team_ids_attribute_path =
+allowed_groups =
+
+# Security options
+use_pkce = false
+use_refresh_token = false
+validate_id_token = false
+jwk_set_url =
+
+# TLS configuration
+tls_skip_verify_insecure = false
+tls_client_cert =
+tls_client_key =
+tls_client_ca =
+
+# Advanced options
+allow_assign_grafana_admin = false
+skip_org_role_sync = false
+signout_redirect_url =
+```
+
+Reference: `conf/defaults.ini:906-947`
+
+### OAuth Strategy Implementation
+
+The OAuth strategy loads settings from the configuration file and provides them to the authentication system:
+
+```go
+// Key OAuth settings loaded by the strategy
+result := map[string]any{
+    "client_id":                     section.Key("client_id").Value(),
+    "client_secret":                 section.Key("client_secret").Value(),
+    "scopes":                        section.Key("scopes").Value(),
+    "auth_url":                      section.Key("auth_url").Value(),
+    "token_url":                     section.Key("token_url").Value(),
+    "api_url":                       section.Key("api_url").Value(),
+    "allow_sign_up":                 section.Key("allow_sign_up").MustBool(false),
+    "role_attribute_path":           section.Key("role_attribute_path").Value(),
+    "use_pkce":                      section.Key("use_pkce").MustBool(false),
+    "use_refresh_token":             section.Key("use_refresh_token").MustBool(false),
+}
+```
+
+Reference: `pkg/services/ssosettings/strategies/oauth_strategy.go:69-114`
+
+### Azure AD OAuth Configuration
+
+Azure AD includes additional settings for managed identities and workload identities:
+
+```ini
+[auth.azuread]
+name = Azure AD
+enabled = false
+allow_sign_up = true
+auto_login = false
+
+client_id = YOUR_APP_ID
+client_secret = YOUR_SECRET
+
+# Managed Identity support
+managed_identity_client_id =
+
+# Workload Identity support
+federated_credential_audience =
+workload_identity_token_file =
+
+scopes = openid email profile
+auth_url = https://login.microsoftonline.com/TENANT_ID/oauth2/v2.0/authorize
+token_url = https://login.microsoftonline.com/TENANT_ID/oauth2/v2.0/token
+allowed_domains =
+allowed_groups =
+```
+
+## LDAP Authentication
+
+LDAP authentication integrates with LDAP directories including Active Directory.
+
+### Configuration
+
+```ini
+[auth.ldap]
+enabled = false
+config_file = /etc/grafana/ldap.toml
+allow_sign_up = true
+skip_org_role_sync = false
+
+# LDAP background sync (Enterprise only)
+sync_cron = "0 1 * * *"
+active_sync_enabled = true
+```
+
+Reference: `conf/defaults.ini:1001-1011`
+
+### LDAP Server Configuration
+
+The LDAP configuration file (`ldap.toml`) defines server connections and attribute mappings:
+
+```toml
+[[servers]]
+host = "ldap.example.com"
+port = 389
+
+# SSL/TLS configuration
+use_ssl = false
+start_tls = false
+ssl_skip_verify = false
+min_tls_version = "TLS1.2"
+tls_ciphers = []
+
+# Root CA certificate
+root_ca_cert = "/path/to/ca.crt"
+
+# Client certificate (mTLS)
+client_cert = "/path/to/client.crt"
+client_key = "/path/to/client.key"
+
+# Bind credentials
+bind_dn = "cn=admin,dc=example,dc=com"
+bind_password = "password"
+
+# Connection timeout
+timeout = 10
+
+# User search
+search_filter = "(cn=%s)"
+search_base_dns = ["dc=example,dc=com"]
+
+# Attribute mapping
+[servers.attributes]
+username = "uid"
+name = "givenName"
+surname = "sn"
+email = "mail"
+member_of = "memberOf"
+
+# Group search
+group_search_filter = "(&(objectClass=posixGroup)(memberUid=%s))"
+group_search_filter_user_attribute = "uid"
+group_search_base_dns = ["ou=groups,dc=example,dc=com"]
+
+# Group to organization role mapping
+[[servers.group_mappings]]
+group_dn = "cn=admins,ou=groups,dc=example,dc=com"
+org_role = "Admin"
+org_id = 1
+
+[[servers.group_mappings]]
+group_dn = "cn=editors,ou=groups,dc=example,dc=com"
+org_role = "Editor"
+org_id = 1
+grafana_admin = false
+```
+
+### LDAP Configuration Structure
+
+Implementation details from `pkg/services/ldap/settings.go:17-87`:
+
+```go
+type ServerConfig struct {
+    Host string
+    Port int
+    
+    UseSSL          bool
+    StartTLS        bool
+    SkipVerifySSL   bool
+    MinTLSVersion   string
+    TLSCiphers      []string
+    
+    RootCACert   string
+    ClientCert   string
+    ClientKey    string
+    BindDN       string
+    BindPassword string
+    Timeout      int
+    
+    SearchFilter  string
+    SearchBaseDNs []string
+    
+    GroupSearchFilter              string
+    GroupSearchFilterUserAttribute string
+    GroupSearchBaseDNs             []string
+    
+    Groups []*GroupToOrgRole
+}
+
+type AttributeMap struct {
+    Username string
+    Name     string
+    Surname  string
+    Email    string
+    MemberOf string
+}
+```
+
+## SAML 2.0 Authentication
+
+SAML authentication enables single sign-on with SAML 2.0 identity providers.
+
+### Configuration
+
+Implementation: `pkg/services/ssosettings/strategies/saml_strategy.go`
+
+```ini
+[auth.saml]
+enabled = false
+name = SAML
+
+# Identity provider metadata
+idp_metadata_url = https://idp.example.com/metadata
+idp_metadata_path = /path/to/metadata.xml
+idp_metadata =
+
+# Service provider configuration
+entity_id = https://grafana.example.com
+certificate_path = /path/to/cert.pem
+private_key_path = /path/to/key.pem
+
+# IdP-initiated login
+allow_idp_initiated = false
+
+# Single logout
+single_logout = false
+
+# Signature settings
+signature_algorithm = rsa-sha256
+
+# Assertion attribute mapping
+assertion_attribute_login = login
+assertion_attribute_email = email
+assertion_attribute_name = name
+assertion_attribute_groups = groups
+assertion_attribute_role = role
+assertion_attribute_org = org
+
+# Role mapping
+role_values_admin = admin
+role_values_editor = editor
+role_values_viewer = viewer
+role_values_grafana_admin =
+
+# Organization mapping
+org_mapping =
+
+# Timing
+max_issue_delay = 90s
+metadata_valid_duration = 48h
+
+# User provisioning
+allow_sign_up = false
+skip_org_role_sync = false
+auto_login = false
+```
+
+Reference: `pkg/services/ssosettings/strategies/saml_strategy.go:32-75`
+
+## JWT Authentication
+
+JWT authentication allows stateless authentication using JSON Web Tokens.
+
+### Configuration
+
+```ini
+[auth.jwt]
+enabled = false
+enable_login_token = false
+
+# Token location
+header_name = X-JWT-Assertion
+
+# JWT verification
+jwk_set_url = https://provider.com/.well-known/jwks.json
+jwk_set_file = /path/to/jwks.json
+jwk_set_bearer_token_file =
+
+# Or use a single key
+key_file = /path/to/key.pem
+key_id =
+
+# Claim mapping
+email_claim = email
+username_claim = sub
+email_attribute_path =
+username_attribute_path =
+role_attribute_path =
+groups_attribute_path =
+org_attribute_path =
+
+# Expected claims
+expect_claims = {"aud": "grafana"}
+
+# Cache settings
+cache_ttl = 60m
+
+# User provisioning
+auto_sign_up = false
+allow_assign_grafana_admin = false
+skip_org_role_sync = false
+role_attribute_strict = false
+
+# URL login
+url_login = false
+
+# TLS
+tls_client_ca =
+tls_skip_verify_insecure = false
+```
+
+Reference: `conf/defaults.ini:973-999`
+
+### JWT Service Implementation
+
+The JWT service handles token validation and key management:
+
+- `pkg/services/auth/jwt/jwt.go` - Main JWT service
+- `pkg/services/auth/jwt/validation.go` - Token validation
+- `pkg/services/auth/jwt/key_sets.go` - JWK set management
+
+## Auth Proxy
+
+Auth proxy allows authentication through a reverse proxy that adds authentication headers.
+
+### Configuration
+
+```ini
+[auth.proxy]
+enabled = false
+header_name = X-WEBAUTH-USER
+header_property = username
+auto_sign_up = true
+
+# Synchronization
+sync_ttl = 15
+
+# IP whitelist
+whitelist =
+
+# Additional headers
+headers =
+headers_encoded = false
+
+# Login token
+enable_login_token = false
+```
+
+Reference: `conf/defaults.ini:961-971`
+
+## Authentication Middleware
+
+The authentication middleware enforces authentication requirements and handles redirects.
+
+### Middleware Options
+
+```go
+type AuthOptions struct {
+    ReqGrafanaAdmin bool  // Require Grafana admin
+    ReqNoAnonynmous bool  // Disallow anonymous access
+    ReqSignedIn     bool  // Require signed-in user
+}
+```
+
+Reference: `pkg/middleware/auth.go:26-30`
+
+### Authentication Flow
+
+1. **Token Lookup**: The middleware checks for authentication tokens in cookies or headers
+2. **User Validation**: Validates the token and loads user information
+3. **Authorization Check**: Verifies user has required permissions
+4. **Redirect Handling**: Redirects to login if authentication fails
+
+Key functions in `pkg/middleware/auth.go`:
+
+- `Auth()` - Main authentication middleware (line 202)
+- `notAuthorized()` - Handles unauthorized requests (line 41)
+- `accessForbidden()` - Handles forbidden access (line 32)
+- `tokenRevoked()` - Handles revoked tokens (line 70)
+
+## Token Management
+
+Grafana manages user authentication tokens through the UserTokenService.
+
+### Token Operations
+
+```go
+type UserTokenService interface {
+    CreateToken(ctx context.Context, cmd *CreateTokenCommand) (*UserToken, error)
+    LookupToken(ctx context.Context, unhashedToken string) (*UserToken, error)
+    RotateToken(ctx context.Context, cmd RotateCommand) (*UserToken, error)
+    RevokeToken(ctx context.Context, token *UserToken, soft bool) error
+    RevokeAllUserTokens(ctx context.Context, userID int64) error
+    GetUserTokens(ctx context.Context, userID int64) ([]*UserToken, error)
+    ActiveTokenCount(ctx context.Context, userID *int64) (int64, error)
+}
+```
+
+Reference: `pkg/services/auth/auth.go:80-96`
+
+### External Sessions
+
+External sessions link OAuth/SAML sessions to Grafana user tokens:
+
+```go
+type ExternalSession struct {
+    ID               int64
+    UserID           int64
+    AuthModule       string
+    OAuthToken       *oauth2.Token
+    OAuthIdToken     string
+    OAuthTokenType   string
+    OAuthExpiry      time.Time
+    OAuthRefreshToken string
+}
+```
+
+## Security Best Practices
+
+### Token Security
+
+1. **Token Rotation**: Tokens are automatically rotated on use
+2. **Token Revocation**: Supports both soft and hard token revocation
+3. **Concurrent Session Limits**: Enforce maximum concurrent sessions per user
+
+### Configuration Security
+
+1. **Secret Management**: Use environment variables for secrets
+   ```ini
+   client_secret = $__env{OAUTH_CLIENT_SECRET}
+   ```
+
+2. **TLS Requirements**: Always use TLS in production
+   ```ini
+   [server]
+   protocol = https
+   cert_file = /path/to/cert.pem
+   cert_key = /path/to/key.pem
+   ```
+
+3. **Disable Anonymous Access**: For production environments
+   ```ini
+   [auth.anonymous]
+   enabled = false
+   ```
+
+### OAuth/OIDC Security
+
+1. **Use PKCE**: Enable PKCE for public clients
+   ```ini
+   use_pkce = true
+   ```
+
+2. **Validate ID Tokens**: Verify token signatures
+   ```ini
+   validate_id_token = true
+   jwk_set_url = https://provider.com/.well-known/jwks.json
+   ```
+
+3. **Restrict Domains**: Limit authentication to specific domains
+   ```ini
+   allowed_domains = example.com
+   ```
+
+### LDAP Security
+
+1. **Use TLS**: Enable LDAPS or StartTLS
+   ```toml
+   use_ssl = true
+   min_tls_version = "TLS1.2"
+   ```
+
+2. **Certificate Validation**: Verify LDAP server certificates
+   ```toml
+   ssl_skip_verify = false
+   root_ca_cert = "/path/to/ca.crt"
+   ```
+
+3. **Service Account**: Use dedicated LDAP bind account with minimal permissions
+
+## Troubleshooting
+
+### Enable Debug Logging
+
+```ini
+[log]
+filters = oauth:debug ldap:debug
+```
+
+### Common Issues
+
+1. **OAuth Redirect URI Mismatch**: Ensure redirect URI in provider matches Grafana URL
+2. **LDAP Connection Timeout**: Check network connectivity and firewall rules
+3. **SAML Clock Skew**: Verify time synchronization between systems
+4. **JWT Validation Failures**: Check key configuration and claim mapping
+
+## Related Topics
+
+- [Authorization](/deployment/security/authorization) - Role-based access control
+- [TLS/SSL Configuration](/deployment/security/tls-ssl) - Secure communication
+- [Security Best Practices](/deployment/security/best-practices) - Comprehensive security guide

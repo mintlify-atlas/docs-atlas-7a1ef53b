@@ -1,0 +1,748 @@
+---
+title: TLS/SSL Configuration
+description: Configure secure communication with TLS/SSL in Grafana
+---
+
+Transport Layer Security (TLS) encrypts communication between clients and Grafana, and between Grafana and external services. This guide covers TLS configuration for various components.
+
+## Overview
+
+Grafana supports TLS/SSL for:
+
+- HTTPS server configuration
+- gRPC server communication
+- LDAP connections
+- OAuth provider connections
+- Database connections
+- SMTP email delivery
+- Datasource connections
+
+## HTTPS Server Configuration
+
+Configure Grafana to serve content over HTTPS.
+
+### Basic HTTPS Setup
+
+```ini
+[server]
+# Use HTTPS protocol
+protocol = https
+
+# Certificate and key files
+cert_file = /path/to/grafana.crt
+cert_key = /path/to/grafana.key
+
+# Certificate passphrase (if encrypted)
+cert_pass = your_passphrase
+
+# Enable automatic certificate reload
+certs_watch_interval = 1h
+```
+
+Reference: `conf/defaults.ini:40-80`
+
+### TLS Version Configuration
+
+Specify minimum TLS version:
+
+```ini
+[server]
+# Minimum TLS version
+# Options: TLS1.2, TLS1.3
+min_tls_version = "TLS1.2"
+```
+
+Reference: `conf/defaults.ini:44`
+
+### Certificate Formats
+
+Grafana supports:
+- **PEM format**: Standard ASCII-armored certificates (most common)
+- **PKCS#12**: Binary format (requires conversion to PEM)
+
+### Self-Signed Certificates
+
+For development environments:
+
+```bash
+# Generate self-signed certificate
+openssl req -x509 -newkey rsa:4096 \
+  -keyout grafana-key.pem -out grafana-cert.pem \
+  -days 365 -nodes \
+  -subj "/CN=localhost"
+
+# Configure Grafana
+[server]
+protocol = https
+cert_file = /path/to/grafana-cert.pem
+cert_key = /path/to/grafana-key.pem
+```
+
+### Certificate Reload
+
+Grafana can automatically reload certificates without restart:
+
+```ini
+[server]
+# Watch certificate files for changes
+certs_watch_interval = 1h
+```
+
+Reference: `conf/defaults.ini:80`
+
+## HTTP Strict Transport Security (HSTS)
+
+Enforce HTTPS connections with HSTS headers.
+
+### HSTS Configuration
+
+```ini
+[security]
+# Enable HSTS
+strict_transport_security = true
+
+# HSTS max age (seconds)
+strict_transport_security_max_age_seconds = 86400
+
+# Include subdomains
+strict_transport_security_subdomains = false
+
+# Enable preload
+strict_transport_security_preload = false
+```
+
+Reference: `conf/defaults.ini:422-433`
+
+HSTS tells browsers to:
+- Always use HTTPS for the domain
+- Reject invalid certificates
+- Prevent SSL stripping attacks
+
+### HSTS Best Practices
+
+1. **Start with short max-age**: Test with 300 seconds initially
+2. **Increase gradually**: Move to 86400 (1 day), then 31536000 (1 year)
+3. **Enable preload carefully**: Only for production domains you control
+4. **Test thoroughly**: HSTS can't be easily reverted
+
+## gRPC Server TLS
+
+Secure gRPC communication between Grafana components.
+
+### gRPC TLS Configuration
+
+```ini
+[grpc_server]
+network = "tcp"
+address = "127.0.0.1:10000"
+
+# Enable TLS
+use_tls = true
+
+# Certificate files
+cert_file = /path/to/grpc-cert.pem
+cert_key = /path/to/grpc-key.pem
+```
+
+Reference: `conf/defaults.ini:113-121`
+
+## LDAP TLS Configuration
+
+Secure LDAP connections with TLS/SSL.
+
+### LDAPS Configuration
+
+In `ldap.toml`:
+
+```toml
+[[servers]]
+host = "ldap.example.com"
+port = 636
+
+# Use SSL (LDAPS)
+use_ssl = true
+
+# Or use StartTLS on standard port
+# port = 389
+# start_tls = true
+
+# Certificate validation
+ssl_skip_verify = false
+
+# Minimum TLS version
+min_tls_version = "TLS1.2"
+
+# Allowed TLS ciphers
+tls_ciphers = [
+    "TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256",
+    "TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384",
+]
+
+# Root CA certificate
+root_ca_cert = "/path/to/ca.crt"
+
+# Client certificate (mTLS)
+client_cert = "/path/to/client.crt"
+client_key = "/path/to/client.key"
+```
+
+Implementation: `pkg/services/ldap/settings.go:35-52`
+
+### LDAP TLS Options
+
+- **use_ssl**: Connect via LDAPS (port 636)
+- **start_tls**: Upgrade connection to TLS (port 389)
+- **ssl_skip_verify**: Skip certificate verification (insecure)
+- **min_tls_version**: Minimum TLS version (TLS1.2, TLS1.3)
+- **tls_ciphers**: Allowed cipher suites
+- **root_ca_cert**: CA certificate for server verification
+- **client_cert/client_key**: Client certificate for mutual TLS
+
+Reference: `pkg/services/ldap/settings.go:39-52`
+
+### Cipher Suite Configuration
+
+The TLS cipher configuration is handled by utility functions:
+
+```go
+// Convert TLS version string to constant
+server.MinTLSVersionID, err = util.TlsNameToVersion(server.MinTLSVersion)
+
+// Convert cipher names to IDs
+server.TLSCipherIDs, err = util.TlsCiphersToIDs(server.TLSCiphers)
+```
+
+Reference: `pkg/services/ldap/settings.go:182-194`
+
+## OAuth Provider TLS
+
+Secure communication with OAuth identity providers.
+
+### OAuth TLS Settings
+
+```ini
+[auth.generic_oauth]
+enabled = true
+
+# TLS configuration
+tls_skip_verify_insecure = false
+tls_client_cert = /path/to/client.crt
+tls_client_key = /path/to/client.key
+tls_client_ca = /path/to/ca.crt
+
+# OAuth URLs (should use HTTPS)
+auth_url = https://provider.com/oauth/authorize
+token_url = https://provider.com/oauth/token
+api_url = https://provider.com/api/user
+```
+
+Reference: `conf/defaults.ini:937-940`
+
+The OAuth strategy loads TLS settings from configuration:
+
+```go
+result := map[string]any{
+    "tls_client_cert":          section.Key("tls_client_cert").Value(),
+    "tls_client_key":           section.Key("tls_client_key").Value(),
+    "tls_client_ca":            section.Key("tls_client_ca").Value(),
+    "tls_skip_verify_insecure": section.Key("tls_skip_verify_insecure").MustBool(false),
+}
+```
+
+Reference: `pkg/services/ssosettings/strategies/oauth_strategy.go:99-102`
+
+### Mutual TLS (mTLS) for OAuth
+
+Some OAuth providers require client certificates:
+
+```ini
+[auth.azuread]
+enabled = true
+
+# Client certificate authentication
+tls_client_cert = /path/to/client.crt
+tls_client_key = /path/to/client.key
+tls_client_ca = /path/to/ca.crt
+```
+
+## Database TLS
+
+Secure database connections with TLS.
+
+### PostgreSQL TLS
+
+```ini
+[database]
+type = postgres
+host = postgres.example.com:5432
+name = grafana
+user = grafana
+password = password
+
+# SSL mode
+# Options: disable, require, verify-ca, verify-full
+ssl_mode = verify-full
+
+# Enable SNI
+ssl_sni = 1
+
+# Certificate files
+ca_cert_path = /path/to/ca.crt
+client_key_path = /path/to/client.key
+client_cert_path = /path/to/client.crt
+
+# Server certificate name
+server_cert_name = postgres.example.com
+```
+
+Reference: `conf/defaults.ini:174-190`
+
+### MySQL TLS
+
+```ini
+[database]
+type = mysql
+host = mysql.example.com:3306
+name = grafana
+user = grafana
+password = password
+
+# SSL mode
+# Options: true, false, skip-verify
+ssl_mode = true
+
+# Certificate files
+ca_cert_path = /path/to/ca.crt
+client_key_path = /path/to/client.key
+client_cert_path = /path/to/client.crt
+```
+
+Reference: `conf/defaults.ini:175-190`
+
+## SMTP TLS
+
+Secure email delivery with TLS.
+
+### SMTP TLS Configuration
+
+```ini
+[smtp]
+enabled = true
+host = smtp.example.com:587
+user = grafana@example.com
+password = password
+
+# Skip certificate verification (not recommended)
+skip_verify = false
+
+# Certificate files
+cert_file = /path/to/client.crt
+key_file = /path/to/client.key
+
+# StartTLS policy
+# Options: OpportunisticStartTLS, MandatoryStartTLS, NoStartTLS
+startTLS_policy = MandatoryStartTLS
+```
+
+Reference: `conf/defaults.ini:1137-1150`
+
+### StartTLS Policies
+
+- **NoStartTLS**: No TLS (insecure)
+- **OpportunisticStartTLS**: Use TLS if available
+- **MandatoryStartTLS**: Require TLS, fail if unavailable
+
+## Datasource TLS
+
+Secure connections to datasources.
+
+### Datasource TLS Settings
+
+Most datasources support TLS configuration in their settings:
+
+```json
+{
+  "url": "https://prometheus.example.com",
+  "jsonData": {
+    "tlsAuth": true,
+    "tlsAuthWithCACert": true,
+    "tlsSkipVerify": false,
+    "serverName": "prometheus.example.com"
+  },
+  "secureJsonData": {
+    "tlsClientCert": "-----BEGIN CERTIFICATE-----...",
+    "tlsClientKey": "-----BEGIN PRIVATE KEY-----...",
+    "tlsCACert": "-----BEGIN CERTIFICATE-----..."
+  }
+}
+```
+
+### Common Datasource TLS Options
+
+- **tlsAuth**: Enable TLS client authentication
+- **tlsAuthWithCACert**: Verify server certificate with CA
+- **tlsSkipVerify**: Skip certificate verification (insecure)
+- **serverName**: Expected server name in certificate
+- **tlsClientCert**: Client certificate (PEM)
+- **tlsClientKey**: Client private key (PEM)
+- **tlsCACert**: CA certificate (PEM)
+
+## HTTP Client TLS
+
+Grafana's HTTP client provider handles TLS for outgoing requests.
+
+Implementation: `pkg/infra/httpclient/httpclientprovider/`
+
+### TLS Configuration
+
+The HTTP client supports:
+
+- Custom CA certificates
+- Client certificates (mTLS)
+- TLS version restrictions
+- Cipher suite selection
+- Certificate verification
+
+### TLS Handshake Timeout
+
+```ini
+[dataproxy]
+# TLS handshake timeout
+tls_handshake_timeout_seconds = 10
+```
+
+Reference: `conf/defaults.ini:264`
+
+## Content Security Policy
+
+Control resource loading with CSP headers.
+
+### CSP Configuration
+
+```ini
+[security]
+# Enable CSP
+content_security_policy = true
+
+# CSP template
+content_security_policy_template = """script-src 'self' 'unsafe-eval' 'unsafe-inline' 'strict-dynamic' $NONCE;object-src 'none';font-src 'self';style-src 'self' 'unsafe-inline' blob:;img-src * data:;base-uri 'self';connect-src 'self' grafana.com ws://$ROOT_PATH wss://$ROOT_PATH;manifest-src 'self';media-src 'none';form-action 'self';"""
+
+# Report-only mode for testing
+content_security_policy_report_only = false
+content_security_policy_report_only_template = """..."""
+```
+
+Reference: `conf/defaults.ini:444-460`
+
+### CSP for HTTPS
+
+Ensure CSP allows secure WebSocket connections:
+
+```
+connect-src 'self' wss://$ROOT_PATH;
+```
+
+## Certificate Management
+
+### Certificate Generation
+
+#### Self-Signed Certificate
+
+```bash
+# Generate private key
+openssl genrsa -out grafana-key.pem 4096
+
+# Generate certificate signing request
+openssl req -new -key grafana-key.pem -out grafana-csr.pem \
+  -subj "/CN=grafana.example.com"
+
+# Generate self-signed certificate
+openssl x509 -req -in grafana-csr.pem \
+  -signkey grafana-key.pem \
+  -out grafana-cert.pem \
+  -days 365
+```
+
+#### Certificate with SAN
+
+```bash
+# Create config file
+cat > san.cnf <<EOF
+[req]
+distinguished_name = req_distinguished_name
+req_extensions = v3_req
+
+[req_distinguished_name]
+CN = grafana.example.com
+
+[v3_req]
+subjectAltName = @alt_names
+
+[alt_names]
+DNS.1 = grafana.example.com
+DNS.2 = grafana.local
+IP.1 = 10.0.0.10
+EOF
+
+# Generate certificate
+openssl req -x509 -newkey rsa:4096 \
+  -keyout grafana-key.pem -out grafana-cert.pem \
+  -days 365 -nodes \
+  -config san.cnf -extensions v3_req
+```
+
+### Certificate Verification
+
+```bash
+# Verify certificate
+openssl x509 -in grafana-cert.pem -text -noout
+
+# Check certificate dates
+openssl x509 -in grafana-cert.pem -noout -dates
+
+# Verify certificate chain
+openssl verify -CAfile ca.crt grafana-cert.pem
+
+# Test TLS connection
+openssl s_client -connect grafana.example.com:443
+```
+
+### Certificate Renewal
+
+With certificate watching enabled, Grafana automatically reloads certificates:
+
+```ini
+[server]
+certs_watch_interval = 1h
+```
+
+Manual reload (if watching is disabled):
+
+```bash
+# Replace certificates
+cp new-cert.pem /path/to/grafana.crt
+cp new-key.pem /path/to/grafana.key
+
+# Restart Grafana
+systemctl restart grafana-server
+```
+
+## CSRF Protection
+
+Cross-Site Request Forgery protection works with TLS.
+
+### CSRF Configuration
+
+```ini
+[security]
+# Enable CSRF checking even without login cookie
+csrf_always_check = false
+
+# Additional trusted headers
+csrf_additional_headers = X-Forwarded-Host
+
+# Trusted origins
+csrf_trusted_origins = grafana.example.com
+```
+
+Reference: `conf/defaults.ini:462-463`
+
+Implementation: `pkg/middleware/csrf/csrf.go`
+
+The CSRF middleware validates the Origin header:
+
+```go
+func (c *CSRF) check(r *http.Request) error {
+    // Get Origin header
+    o := r.Header.Get("Origin")
+    
+    // Parse origin URL
+    originURL, err := url.Parse(o)
+    origin := originURL.Hostname()
+    
+    // Check if origin is trusted
+    for trustedOrigin := range c.trustedOrigins {
+        if trustedOrigin == origin {
+            return nil
+        }
+    }
+    
+    // Verify origin matches request host
+    if origin != requestHost {
+        return errors.New("origin not allowed")
+    }
+}
+```
+
+Reference: `pkg/middleware/csrf/csrf.go:71-141`
+
+## Security Headers
+
+Additional security headers for HTTPS deployments.
+
+### X-Content-Type-Options
+
+```ini
+[security]
+x_content_type_options = true
+```
+
+Prevents MIME type sniffing.
+
+Reference: `conf/defaults.ini:438`
+
+### X-XSS-Protection
+
+```ini
+[security]
+x_xss_protection = true
+```
+
+Enables browser XSS protection.
+
+Reference: `conf/defaults.ini:442`
+
+## Best Practices
+
+### 1. Always Use TLS in Production
+
+```ini
+[server]
+protocol = https
+min_tls_version = "TLS1.2"
+```
+
+### 2. Use Strong Cipher Suites
+
+Prefer modern, secure cipher suites:
+
+```toml
+tls_ciphers = [
+    "TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256",
+    "TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384",
+    "TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256",
+    "TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384",
+]
+```
+
+### 3. Verify Certificates
+
+Never skip certificate verification in production:
+
+```ini
+# Bad
+tls_skip_verify_insecure = true
+ssl_skip_verify = true
+
+# Good
+tls_skip_verify_insecure = false
+ssl_skip_verify = false
+ca_cert_path = /path/to/ca.crt
+```
+
+### 4. Use Certificate Watching
+
+Enable automatic certificate reload:
+
+```ini
+[server]
+certs_watch_interval = 1h
+```
+
+### 5. Implement HSTS
+
+Enforce HTTPS in browsers:
+
+```ini
+[security]
+strict_transport_security = true
+strict_transport_security_max_age_seconds = 31536000
+```
+
+### 6. Secure Cookie Settings
+
+```ini
+[security]
+cookie_secure = true
+cookie_samesite = strict
+```
+
+Reference: `conf/defaults.ini:414-417`
+
+### 7. Monitor Certificate Expiration
+
+Set up alerts for certificate expiration:
+
+```bash
+# Check certificate expiration
+openssl x509 -in grafana-cert.pem -noout -enddate
+
+# Alert if expires in < 30 days
+days_until_expiry=$(( ($(date -d "$(openssl x509 -in grafana-cert.pem -noout -enddate | cut -d= -f2)" +%s) - $(date +%s)) / 86400 ))
+if [ $days_until_expiry -lt 30 ]; then
+    echo "Certificate expires in $days_until_expiry days!"
+fi
+```
+
+### 8. Use Mutual TLS (mTLS) for Services
+
+For service-to-service communication:
+
+```ini
+[grpc_server]
+use_tls = true
+cert_file = /path/to/server.crt
+cert_key = /path/to/server.key
+# Require client certificates
+```
+
+## Troubleshooting
+
+### Certificate Issues
+
+```bash
+# Test HTTPS connection
+curl -v https://grafana.example.com
+
+# Test with custom CA
+curl --cacert ca.crt https://grafana.example.com
+
+# Ignore certificate errors (testing only)
+curl -k https://grafana.example.com
+```
+
+### TLS Handshake Errors
+
+Common causes:
+- Certificate expired
+- Wrong certificate hostname
+- Missing intermediate certificates
+- Cipher suite mismatch
+- TLS version not supported
+
+### Debug Logging
+
+```ini
+[log]
+filters = http.server:debug
+```
+
+### OpenSSL Debugging
+
+```bash
+# Test TLS connection with detailed output
+openssl s_client -connect grafana.example.com:443 \
+  -showcerts -state -debug
+
+# Test specific TLS version
+openssl s_client -connect grafana.example.com:443 -tls1_2
+
+# List supported ciphers
+openssl s_client -connect grafana.example.com:443 -cipher 'HIGH'
+```
+
+## Related Topics
+
+- [Authentication](/deployment/security/authentication) - User authentication
+- [Security Best Practices](/deployment/security/best-practices) - Comprehensive security guide
+- [Reverse Proxy Setup](/setup-grafana/set-up-grafana-reverse-proxy) - Proxy TLS termination

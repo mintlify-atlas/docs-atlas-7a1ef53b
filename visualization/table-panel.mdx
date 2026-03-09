@@ -1,0 +1,437 @@
+---
+title: Table Panel
+description: Display data in tabular format with rich cell options
+---
+
+The Table panel displays data in a tabular format with extensive customization options for cells, columns, and data presentation.
+
+## Overview
+
+The Table panel provides:
+
+- Multiple cell display modes
+- Sortable and filterable columns
+- Column freezing and resizing
+- Custom cell rendering (sparklines, gauges, images)
+- Footer calculations
+- Pagination support
+
+## Panel Options
+
+The Table panel is defined in `public/app/plugins/panel/table/module.tsx:18`:
+
+```typescript
+export const plugin = new PanelPlugin<Options, FieldConfig>(TablePanel)
+  .setPanelChangeHandler(tablePanelChangedHandler)
+  .setMigrationHandler(tableMigrationHandler)
+  .useFieldConfig({
+    standardOptions: {
+      [FieldConfigProperty.Actions]: {
+        hideFromDefaults: false,
+      },
+    },
+    useCustomConfig: (builder) => {
+      addTableCustomConfig(builder, {
+        filters: true,
+        wrapHeaderText: true,
+        hideFields: true,
+      });
+    },
+  })
+  .setPanelOptions((builder) => {
+    addTableCustomPanelOptions(builder);
+  });
+```
+
+### Table Options Interface
+
+From `public/app/plugins/panel/table/panelcfg.gen.ts:18`:
+
+```typescript
+interface Options {
+  cellHeight?: TableCellHeight;      // 'sm' | 'md' | 'lg'
+  disableKeyboardEvents?: boolean;
+  enablePagination?: boolean;
+  frameIndex: number;                // Selected data frame index
+  frozenColumns?: {
+    left?: number;                   // Number of columns to freeze on left
+  };
+  maxRowHeight?: number;             // Maximum row height in pixels
+  showHeader: boolean;               // Display column headers
+  showTypeIcons?: boolean;           // Show data type icons in headers
+  sortBy?: Array<TableSortByFieldState>;
+}
+```
+
+### Default Options
+
+From `public/app/plugins/panel/table/panelcfg.gen.ts:59`:
+
+```typescript
+const defaultOptions: Partial<Options> = {
+  cellHeight: TableCellHeight.Sm,
+  frameIndex: 0,
+  showHeader: true,
+  showTypeIcons: false,
+  sortBy: [],
+};
+```
+
+### Cell Height Options
+
+```typescript
+enum TableCellHeight {
+  Sm = 'sm',   // Small (compact)
+  Md = 'md',   // Medium
+  Lg = 'lg'    // Large
+}
+```
+
+### Sorting
+
+```typescript
+interface TableSortByFieldState {
+  displayName: string;
+  desc?: boolean;  // Sort descending
+}
+```
+
+## Field Configuration
+
+### Cell Options
+
+Configured via custom editor at `public/app/plugins/panel/table/module.tsx:52`:
+
+```typescript
+interface TableCellOptions {
+  type: TableCellDisplayMode;
+  mode?: string;  // Submode for specific cell types
+  // Additional options based on type
+}
+```
+
+### Cell Display Modes
+
+```typescript
+enum TableCellDisplayMode {
+  Auto = 'auto',                    // Automatic based on data type
+  ColorText = 'color-text',         // Colored text
+  ColorBackground = 'color-background', // Colored cell background
+  ColorBackgroundSolid = 'color-background-solid',
+  GradientGauge = 'gradient-gauge', // Horizontal gauge
+  LCDGauge = 'lcd-gauge',          // LCD-style gauge
+  BasicGauge = 'basic-gauge',       // Simple gauge
+  JSONView = 'json-view',           // Formatted JSON
+  Image = 'image',                  // Image display
+  Sparkline = 'sparkline',          // Mini time series
+  DataLinks = 'data-links',         // Clickable links
+}
+```
+
+### Cell-Specific Options
+
+#### Bar Gauge Cell
+
+```typescript
+interface BarGaugeCellOptions {
+  type: 'gradient-gauge';
+  mode?: 'basic' | 'lcd';
+  valueDisplayMode?: 'color' | 'text' | 'hidden';
+}
+```
+
+#### Sparkline Cell
+
+Configured at `public/app/plugins/panel/table/cells/SparklineCellOptionsEditor.tsx`:
+
+```typescript
+interface SparklineCellOptions {
+  type: 'sparkline';
+  fillOpacity?: number;  // 0-100
+  lineWidth?: number;
+  showPoints?: 'auto' | 'always' | 'never';
+}
+```
+
+#### Image Cell
+
+```typescript
+interface ImageCellOptions {
+  type: 'image';
+  cellDisplayMode?: 'thumbnail' | 'cover';
+  width?: number;       // Fixed width in pixels
+  height?: number;      // Fixed height in pixels
+}
+```
+
+### Footer Calculations
+
+Configured at `public/app/plugins/panel/table/module.tsx:36`:
+
+```typescript
+interface FooterOptions {
+  reducers?: string[];  // Array of reducer functions
+}
+```
+
+Available reducers:
+- `sum` - Sum of all values
+- `mean` - Average value
+- `min` - Minimum value
+- `max` - Maximum value
+- `count` - Number of values
+- `last` - Last value
+- And more...
+
+### Tooltips
+
+Configured at `public/app/plugins/panel/table/module.tsx:79`:
+
+```typescript
+interface TooltipOptions {
+  field?: string;                    // Field name to show in tooltip
+  placement?: TableCellTooltipPlacement;
+}
+
+enum TableCellTooltipPlacement {
+  Auto = 'auto',
+  Top = 'top',
+  Right = 'right',
+  Bottom = 'bottom',
+  Left = 'left',
+}
+```
+
+### Cell Value Inspect
+
+From `public/app/plugins/panel/table/module.tsx:64`:
+
+```typescript
+interface FieldConfig {
+  inspect?: boolean;  // Enable cell value inspection in modal
+}
+```
+
+Allows inspecting full cell content in a modal dialog for:
+- Auto cells
+- JSON view cells
+- Color text/background cells
+
+### Styling from Field
+
+From `public/app/plugins/panel/table/module.tsx:118`:
+
+```typescript
+interface FieldConfig {
+  styleField?: string;  // Field containing JSON with CSS properties
+}
+```
+
+Allows dynamic cell styling using a field containing CSS properties:
+
+```json
+{
+  "color": "#ff0000",
+  "fontWeight": "bold",
+  "backgroundColor": "#f0f0f0"
+}
+```
+
+## Panel JSON Example
+
+### Basic Table
+
+```json
+{
+  "type": "table",
+  "title": "Server Status",
+  "gridPos": { "x": 0, "y": 0, "w": 12, "h": 8 },
+  "targets": [
+    {
+      "datasource": { "type": "prometheus" },
+      "expr": "up",
+      "format": "table"
+    }
+  ],
+  "options": {
+    "showHeader": true,
+    "cellHeight": "sm",
+    "enablePagination": false,
+    "frozenColumns": { "left": 1 },
+    "sortBy": [
+      { "displayName": "Time", "desc": true }
+    ]
+  },
+  "fieldConfig": {
+    "defaults": {
+      "custom": {
+        "cellOptions": {
+          "type": "auto"
+        },
+        "inspect": false
+      }
+    },
+    "overrides": []
+  }
+}
+```
+
+### Table with Custom Cells
+
+```json
+{
+  "type": "table",
+  "title": "System Metrics",
+  "fieldConfig": {
+    "defaults": {},
+    "overrides": [
+      {
+        "matcher": { "id": "byName", "options": "CPU" },
+        "properties": [
+          {
+            "id": "custom.cellOptions",
+            "value": {
+              "type": "gradient-gauge",
+              "mode": "basic"
+            }
+          },
+          {
+            "id": "unit",
+            "value": "percent"
+          },
+          {
+            "id": "min",
+            "value": 0
+          },
+          {
+            "id": "max",
+            "value": 100
+          },
+          {
+            "id": "thresholds",
+            "value": {
+              "mode": "absolute",
+              "steps": [
+                { "value": 0, "color": "green" },
+                { "value": 70, "color": "yellow" },
+                { "value": 90, "color": "red" }
+              ]
+            }
+          }
+        ]
+      },
+      {
+        "matcher": { "id": "byName", "options": "Trend" },
+        "properties": [
+          {
+            "id": "custom.cellOptions",
+            "value": {
+              "type": "sparkline",
+              "fillOpacity": 10,
+              "lineWidth": 1,
+              "showPoints": "never"
+            }
+          }
+        ]
+      },
+      {
+        "matcher": { "id": "byName", "options": "Status" },
+        "properties": [
+          {
+            "id": "custom.cellOptions",
+            "value": { "type": "color-background-solid" }
+          },
+          {
+            "id": "mappings",
+            "value": [
+              { "type": "value", "value": "OK", "text": "✓ OK", "color": "green" },
+              { "type": "value", "value": "ERROR", "text": "✗ Error", "color": "red" }
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "options": {
+    "showHeader": true,
+    "cellHeight": "md",
+    "footer": {
+      "reducers": ["mean", "max"]
+    }
+  }
+}
+```
+
+## Advanced Features
+
+### Column Filtering
+
+Enable filtering UI for columns to allow users to filter data client-side.
+
+### Pagination
+
+For large datasets, enable pagination:
+
+```json
+{
+  "options": {
+    "enablePagination": true
+  }
+}
+```
+
+### Frozen Columns
+
+Freeze columns on the left during horizontal scrolling:
+
+```json
+{
+  "options": {
+    "frozenColumns": { "left": 2 }
+  }
+}
+```
+
+### Data Links
+
+Configure clickable links in cells using the standard field config `links` option:
+
+```json
+{
+  "fieldConfig": {
+    "defaults": {
+      "links": [
+        {
+          "title": "View Details",
+          "url": "/d/dashboard-uid?var-server=${__data.fields.server}"
+        }
+      ]
+    }
+  }
+}
+```
+
+## Implementation Details
+
+The Table panel uses React Table library for advanced table features.
+
+Key files:
+- `public/app/plugins/panel/table/module.tsx` - Plugin definition
+- `public/app/plugins/panel/table/TablePanel.tsx` - Component implementation
+- `public/app/plugins/panel/table/TableCellOptionEditor.tsx` - Cell options UI
+- `public/app/plugins/panel/table/panelcfg.gen.ts` - Generated types
+
+<Note>
+The Table panel supports field actions, which appear as buttons in cells for quick access to related functionality.
+</Note>
+
+## Related Resources
+
+<CardGroup cols={2}>
+  <Card title="Graph Panel" icon="chart-line" href="/visualization/graph-panel">
+    Visualize time series data
+  </Card>
+  <Card title="Stat Panel" icon="gauge" href="/visualization/stat-panel">
+    Display single statistical values
+  </Card>
+</CardGroup>

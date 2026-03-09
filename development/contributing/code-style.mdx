@@ -1,0 +1,272 @@
+---
+title: Code style
+description: Code style guidelines for Grafana backend and frontend development
+---
+
+# Code style
+
+Grafana's codebase has been developed over time with a mix of styles. This guide explains how we write code going forward.
+
+## Frontend style guide
+
+Grafana Labs follows the [Airbnb React/JSX Style Guide](https://github.com/airbnb/javascript/tree/master/react).
+
+### Basic rules
+
+- Keep files small and focused
+- Break large components into sub-components
+- Use spaces for indentation
+
+### Naming conventions
+
+#### Class names
+Use PascalCase:
+
+```typescript
+// Good
+class DataLink { }
+
+// Bad
+class dataLink { }
+```
+
+#### Constants
+Use ALL_CAPS:
+
+```typescript
+// Good
+const CONSTANT_VALUE = "This string won't change";
+
+// Bad
+const constantValue = "This string won't change";
+```
+
+#### Functions and variables
+Use camelCase:
+
+```typescript
+// Good
+const calculatePercentage = () => { }
+const queryTargets = [];
+
+// Bad
+const CalculatePercentage = () => { }
+const QueryTargets = [];
+```
+
+#### Interfaces and types
+Use PascalCase (no `I` prefix):
+
+```typescript
+// Good
+interface ButtonProps { }
+type RequestInfo = ...
+
+// Bad
+interface IButtonProps { }
+interface button_props { }
+```
+
+#### Files and directories
+
+- **Files**: Name according to primary export
+  - PascalCase for classes/React components
+  - camelCase for functions
+  - Use `constants.ts` for constants
+  - Use `actions.ts` for Redux actions
+  - Use `reducers.ts` for Redux reducers
+  - Use `*.test.ts(x)` for test files
+
+- **Directories**: Use dash-case (kebab-case)
+  - Example: `features/new-important-feature/utils.ts`
+
+#### React components
+
+Use function declarations:
+
+```typescript
+// Good
+export function Component(props: Props) { ... }
+
+// Bad
+export const Component = (props: Props) => { ... }
+export const Component: React.FC<Props> = (props) => { ... }
+```
+
+Callback props should use `on` prefix:
+
+```tsx
+// Good
+onChange = () => { };
+render() {
+  return <MyComponent onChange={this.onChange} />;
+}
+
+// Bad
+handleChange = () => { };
+render() {
+  return <MyComponent changed={this.handleChange} />;
+}
+```
+
+### Code organization
+
+```
+features/my-feature/
+├── components/          # React components
+├── state/              # Redux state and domain logic
+│   ├── actions.ts
+│   └── reducers.ts
+├── api.ts              # API calls (non-Redux thunk)
+├── DashboardPage.tsx   # Container/page component
+└── MyFeature.test.tsx  # Tests next to subject
+```
+
+**For external plugin code:**
+- Components and types → `@grafana/ui`
+- Data models and utilities → `@grafana/data`
+- Runtime service interfaces → `@grafana/runtime`
+
+### Exports
+
+- Use named exports (not default exports)
+- Use declaration exports: `export const foo = ...`
+- Only export code meant for external use
+
+### Type annotations
+
+Let TypeScript infer types when possible, but:
+
+```typescript
+// Good - explicitly type arrays
+const stringArray: string[] = [];
+
+// Good - specify function return types
+function transform(value?: string): TransformedValue | undefined {
+  if (!value) return undefined;
+  return applyTransform(value);
+}
+
+// Bad - type inference fails
+const stringArray = [];
+```
+
+### State management
+
+- Don't mutate state in reducers or thunks
+- Use `createSlice` from [Redux Toolkit](https://redux-toolkit.js.org/)
+- Use `reducerTester` to test reducers
+- Use state selectors instead of accessing state directly
+
+### Styling
+
+Use Emotion with `useStyles2` hook:
+
+```typescript
+const getStyles = (theme: GrafanaTheme2) => ({
+  elementWrapper: css({
+    padding: theme.spacing(1, 2),
+    background: theme.colors.background.secondary,
+  }),
+});
+
+// In component
+const styles = useStyles2(getStyles);
+```
+
+<Warning>
+SASS styles are deprecated. Migrate to Emotion when modifying SASS styles.
+</Warning>
+
+### Comments
+
+- Use [TSDoc](https://github.com/microsoft/tsdoc) for documentation comments
+- Use `/** ... */` for React prop documentation (react-docgen)
+- Use inline comments inside functions and classes
+
+## Backend style guide
+
+Follow these standard Go guidelines:
+
+- [Effective Go](https://golang.org/doc/effective_go.html)
+- [Code Review Comments](https://github.com/golang/go/wiki/CodeReviewComments)
+- [Go: Best Practices for Production Environments](http://peter.bourgon.org/go-in-production/#formatting-and-style)
+
+### Linting and formatting
+
+We use [GolangCI-Lint](https://github.com/golangci/golangci-lint) with a custom configuration.
+
+Run the linter:
+
+```bash
+make lint-go
+```
+
+### Globals
+
+Avoid global variables when possible. They make code difficult to maintain, reason about, and test. The Grafana codebase currently uses global variables (especially for configuration), but we're working to reduce this.
+
+### Pointers
+
+Prefer value types. Use pointers only when necessary:
+
+- Passing modifiable arguments to functions
+- Performance considerations (benchmark first!)
+- When `nil` has semantic meaning (prefer zero values when possible)
+
+Pointers increase the risk of nil pointer panics.
+
+### Database patterns
+
+#### Foreign keys
+
+We generally don't use foreign key constraints for [historical and technical reasons](https://github.com/grafana/grafana/issues/3269#issuecomment-383328548).
+
+#### Unique columns
+
+If a column or column combination should be unique, add a uniqueness constraint through a migration.
+
+#### XORM Session methods
+
+<Warning>
+`Session.Insert()` and `Session.InsertOne()` return the number of affected rows, NOT the newly introduced primary key. Contributors should be extra cautious when using them.
+</Warning>
+
+### JSON
+
+The `simplejson` package is legacy code. For new code, use the standard library [`encoding/json`](https://golang.org/pkg/encoding/json/) instead.
+
+## Linting tools
+
+### Frontend (ESLint)
+
+We use [@grafana/eslint-config](https://github.com/grafana/eslint-config-grafana) with bulk suppressions.
+
+```bash
+yarn lint           # Run ESLint
+yarn lint:fix       # Auto-fix issues
+yarn lint:prune     # Update suppressions file
+```
+
+**ESLint runs:**
+- As a precommit hook (may auto-update `eslint-suppressions.json`)
+- In CI (must pass before merge)
+
+### Frontend (Prettier)
+
+```bash
+yarn prettier:check  # Check formatting
+yarn prettier:write  # Auto-format files
+```
+
+### Frontend (TypeScript)
+
+```bash
+yarn typecheck       # Type check all code
+```
+
+### Backend (Go)
+
+```bash
+make lint-go         # Run GolangCI-Lint
+```

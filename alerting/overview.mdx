@@ -1,0 +1,194 @@
+---
+title: Grafana Alerting Overview
+description: Learn about Grafana's unified alerting system and its key components
+---
+
+Grafana's unified alerting system provides a comprehensive solution for managing alerts across multiple data sources, handling notifications, and controlling alert lifecycles.
+
+## Architecture
+
+The unified alerting system consists of several key components:
+
+### Alert Rules
+
+Alert rules define the conditions that trigger alerts. Grafana supports two types of rules:
+
+- **Alerting Rules**: Evaluate queries and fire alerts when conditions are met
+- **Recording Rules**: Pre-compute frequently needed or computationally expensive expressions and save their result as a new set of time series
+
+### Notification System
+
+The notification system handles how and where alerts are sent:
+
+- **Contact Points**: Define the destinations where notifications are sent (email, Slack, PagerDuty, etc.)
+- **Notification Policies**: Route alerts to appropriate contact points based on labels
+- **Notification Templates**: Customize the content and format of alert notifications
+
+### Alert Management
+
+- **Alert Groups**: Organize related firing alerts together
+- **Silences**: Temporarily mute notifications for specific alerts
+- **Mute Timings**: Schedule recurring periods when notifications should be suppressed
+
+## Rule Types
+
+<CodeGroup>
+
+```typescript Alerting Rule Structure
+interface AlertRule {
+  id: number;
+  uid: string;
+  orgID: number;
+  title: string;
+  condition: string;  // RefID of query/expression to evaluate
+  data: AlertQuery[]; // Queries and expressions
+  intervalSeconds: number;
+  for: Duration;      // Pending duration before firing
+  noDataState: 'Alerting' | 'NoData' | 'OK' | 'KeepLast';
+  execErrState: 'Alerting' | 'Error' | 'OK' | 'KeepLast';
+  labels: Record<string, string>;
+  annotations: Record<string, string>;
+  isPaused: boolean;
+  notificationSettings?: NotificationSettings;
+}
+```
+
+```go Recording Rule
+type Record struct {
+    // Metric indicates a metric name to send results to
+    Metric string
+    // From contains a query RefID (which expression node is the output)
+    From string
+    // TargetDatasourceUID is the data source to write results
+    TargetDatasourceUID string
+}
+```
+
+</CodeGroup>
+
+## Rule States
+
+### NoData Handling
+
+When a query returns no data, the rule can transition to different states:
+
+- **Alerting**: Treat no data as an alert condition
+- **NoData**: Create a specific "No Data" alert state
+- **OK**: Treat no data as normal (resolve alert)
+- **KeepLast**: Maintain the previous state
+
+### Error Handling
+
+When query execution fails:
+
+- **Alerting**: Treat errors as alert conditions
+- **Error**: Create a specific "Error" alert state
+- **OK**: Treat errors as normal
+- **KeepLast**: Maintain the previous state
+
+## Alert Evaluation
+
+Alert rules are evaluated on a scheduled interval:
+
+1. **Query Execution**: All data queries are executed
+2. **Expression Evaluation**: Server-side expressions process query results
+3. **Condition Check**: The condition expression determines alert state
+4. **State Transition**: Alert state changes trigger notifications
+5. **Notification Routing**: Alerts are routed to contact points via policies
+
+## Organization Structure
+
+```
+Organization
+└── Folders (Namespaces)
+    └── Rule Groups
+        └── Alert Rules
+```
+
+- **Folders**: Organize rules and control access permissions
+- **Rule Groups**: Rules that share the same evaluation interval
+- **Alert Rules**: Individual alert definitions
+
+## Key Labels & Annotations
+
+### Reserved Labels
+
+- `grafana_folder`: Automatically added with folder title
+- `alertname`: Alert rule name
+- `__grafana_receiver__`: Auto-routing receiver name
+- `__grafana_route_settings_hash__`: Notification settings hash
+
+### Special Annotations
+
+- `__dashboardUid__`: Dashboard UID for panel alerts
+- `__panelId__`: Panel ID for dashboard integration
+- `grafana_state_reason`: Explains state transitions (NoData, Error, etc.)
+
+## Data Sources
+
+Unified alerting supports:
+
+- **Grafana-managed**: Rules stored in Grafana's database
+- **Mimir/Loki**: Rules stored in external ruler APIs
+- **Prometheus**: Compatible alert rule format
+
+## Backend Components
+
+<CodeGroup>
+
+```go Alert Rule Model
+// Location: pkg/services/ngalert/models/alert_rule.go
+type AlertRule struct {
+    ID              int64
+    UID             string
+    OrgID           int64
+    Title           string
+    Condition       string
+    Data            []AlertQuery
+    IntervalSeconds int64
+    NamespaceUID    string  // Folder UID
+    RuleGroup       string
+    NoDataState     NoDataState
+    ExecErrState    ExecutionErrorState
+    For             time.Duration
+    KeepFiringFor   time.Duration
+    Labels          map[string]string
+    Annotations     map[string]string
+    IsPaused        bool
+}
+```
+
+```go Alert Query
+type AlertQuery struct {
+    RefID             string
+    QueryType         string
+    RelativeTimeRange RelativeTimeRange
+    DatasourceUID     string
+    Model             json.RawMessage
+}
+```
+
+</CodeGroup>
+
+## Related Pages
+
+<CardGroup cols={2}>
+  <Card title="Alert Rules" icon="bell" href="./alert-rules">
+    Learn how to create and configure alert rules
+  </Card>
+  <Card title="Contact Points" icon="envelope" href="./contact-points">
+    Configure where notifications are sent
+  </Card>
+  <Card title="Notification Policies" icon="route" href="./notification-channels">
+    Route alerts to the right destinations
+  </Card>
+  <Card title="Silences" icon="bell-slash" href="./silences">
+    Temporarily mute alert notifications
+  </Card>
+</CardGroup>
+
+## Additional Resources
+
+- [Alert Rule API Documentation](/api-reference/alerting/rules)
+- [Provisioning Alerting Configuration](/guides/provisioning)
+- [Alerting Best Practices](/guides/alerting-best-practices)

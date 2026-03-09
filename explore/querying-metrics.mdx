@@ -1,0 +1,366 @@
+---
+title: Querying Metrics
+description: Learn how to query and visualize time-series metrics in Grafana Explore
+---
+
+# Querying Metrics in Explore
+
+Explore provides powerful capabilities for querying and analyzing time-series metrics data from sources like Prometheus, Graphite, InfluxDB, and other metrics databases.
+
+## Metrics Visualization
+
+When you query metrics data, Explore displays results in multiple formats:
+
+### Graph View
+
+The primary visualization for time-series data shows:
+- Line, bar, or points visualization styles
+- Multiple series overlaid on the same graph
+- Time-based X-axis with automatic scaling
+- Interactive tooltips showing values at specific times
+- Zoom capabilities by selecting a time range
+
+<Tip>
+Click and drag on the graph to zoom into a specific time range. The time picker updates automatically.
+</Tip>
+
+### Table View
+
+The table displays metric data in a structured format:
+- Time-indexed rows
+- Columns for each series and label
+- Sorting and filtering capabilities
+- Export to CSV option
+
+### Raw Data View
+
+For Prometheus specifically, the **Raw Prometheus** view shows:
+- Native Prometheus response format
+- Instant query results
+- Metadata about the query execution
+
+## Prometheus Queries
+
+### Basic Queries
+
+Prometheus is the most common metrics data source in Grafana. Here are essential query patterns:
+
+#### Instant Vector Queries
+
+Query current values of a metric:
+
+```promql
+up
+```
+
+This returns the current value of the `up` metric for all time series.
+
+#### Range Vector Queries
+
+Query values over a time range:
+
+```promql
+rate(http_requests_total[5m])
+```
+
+Calculates the per-second rate of HTTP requests over the last 5 minutes.
+
+### Query Builder
+
+The Prometheus query builder helps construct queries visually:
+
+<Steps>
+  <Step title="Select metric">
+    Start by choosing a metric from the dropdown. Metrics are autocompleted based on what's available in your Prometheus instance.
+  </Step>
+  
+  <Step title="Add label filters">
+    Refine your query by adding label matchers:
+    ```promql
+    http_requests_total{job="api-server", method="GET"}
+    ```
+  </Step>
+  
+  <Step title="Apply functions">
+    Add functions like `rate()`, `sum()`, or `histogram_quantile()` to transform the data:
+    ```promql
+    sum(rate(http_requests_total{job="api-server"}[5m])) by (status)
+    ```
+  </Step>
+  
+  <Step title="Add operations">
+    Combine multiple queries with mathematical operations or aggregations.
+  </Step>
+</Steps>
+
+### Common Query Patterns
+
+#### Calculate Rate of Change
+
+For counter metrics, use `rate()` to calculate per-second increase:
+
+```promql
+rate(node_cpu_seconds_total[5m])
+```
+
+#### Aggregation
+
+Sum metrics across dimensions:
+
+```promql
+sum(rate(http_requests_total[5m])) by (handler)
+```
+
+This groups requests by the `handler` label and sums them.
+
+#### Percentiles
+
+Calculate percentiles from histogram metrics:
+
+```promql
+histogram_quantile(0.95, 
+  sum(rate(http_request_duration_seconds_bucket[5m])) by (le)
+)
+```
+
+This calculates the 95th percentile request duration.
+
+#### Filtering by Labels
+
+Use label matchers to filter time series:
+
+```promql
+# Exact match
+http_requests_total{status="200"}
+
+# Regex match
+http_requests_total{status=~"2.."}
+
+# Not equal
+http_requests_total{status!="200"}
+
+# Regex not match
+http_requests_total{status!~"5.."}
+```
+
+### Advanced Techniques
+
+#### Offset Queries
+
+Compare current values with historical data:
+
+```promql
+rate(http_requests_total[5m]) 
+  / 
+rate(http_requests_total[5m] offset 1w)
+```
+
+This shows the current rate compared to the same time last week.
+
+#### Multiple Aggregations
+
+Combine different aggregation functions:
+
+```promql
+avg(rate(http_requests_total[5m])) by (job)
+  / 
+count(rate(http_requests_total[5m])) by (job)
+```
+
+#### Subqueries
+
+Perform calculations over aggregated results:
+
+```promql
+max_over_time(
+  sum(rate(http_requests_total[5m]))[1h:5m]
+)
+```
+
+This finds the maximum request rate within a 1-hour window.
+
+## Graph Customization
+
+### Graph Styles
+
+Explore supports multiple visualization styles:
+
+- **Lines** - Default style showing connected data points
+- **Bars** - Vertical bars representing each data point
+- **Points** - Individual markers for each measurement
+
+Change the style using the graph style selector in the Graph panel header.
+
+### Multiple Series Display
+
+<Info>
+By default, Explore shows up to 20 time series. If your query returns more, you'll see a warning with an option to show all series.
+</Info>
+
+Manage series display:
+- Use label filters to reduce the number of series
+- Apply aggregations to combine related series
+- Click "Show all series" if you need to see everything
+
+## Time Controls
+
+### Time Picker
+
+Control the time range for your queries:
+
+- **Relative time ranges**: Last 5m, 15m, 1h, 6h, 24h, etc.
+- **Absolute time ranges**: Specify exact start and end times
+- **Fiscal year settings**: Configure fiscal year start month
+
+### Zoom and Navigation
+
+1. **Click and drag** on the graph to zoom into a time range
+2. Use the **← →** buttons to shift the time range backward/forward
+3. Click **Zoom out** to return to the previous time range
+4. Use **Time sync** in split view to synchronize time ranges across panes
+
+### Auto-refresh
+
+Enable auto-refresh to continuously update metrics:
+
+1. Click the refresh interval dropdown
+2. Select an interval (5s, 10s, 30s, 1m, etc.)
+3. Queries re-run automatically at the selected interval
+
+<Warning>
+Be mindful of query performance when using short auto-refresh intervals, especially with complex queries or large time ranges.
+</Warning>
+
+## Query Inspector
+
+The Query Inspector provides detailed information about query execution:
+
+<Steps>
+  <Step title="Open Inspector">
+    Click the **Query inspector** button below the query editor.
+  </Step>
+  
+  <Step title="View Stats">
+    See query execution time, number of series returned, and data transfer size.
+  </Step>
+  
+  <Step title="Review Request">
+    Examine the exact API request sent to the data source.
+  </Step>
+  
+  <Step title="Inspect Response">
+    View the raw response data from the data source.
+  </Step>
+</Steps>
+
+## Logs Volume (Metrics from Logs)
+
+When querying log sources that support metrics (like Loki), Explore can show a metrics overlay:
+
+- Histogram showing log volume over time
+- Colored by log level (error, warning, info, etc.)
+- Click bars to filter to that time range
+- Toggle on/off with the **Logs volume** button
+
+This helps identify when issues occurred before diving into individual log lines.
+
+## Exemplars
+
+If your Prometheus instance has exemplars enabled, you can:
+
+1. See exemplar markers on the graph (small diamonds)
+2. Click an exemplar to view associated trace
+3. Follow the link to the trace in the tracing data source
+
+Exemplars connect metrics to traces, enabling seamless navigation from "what" to "why."
+
+<Info>
+Exemplars require Prometheus 2.26+ and must be explicitly recorded by your instrumentation.
+</Info>
+
+## Exporting and Sharing
+
+### Share Query
+
+1. Click the **Share** button in the toolbar
+2. Copy the generated URL
+3. Share with team members - the URL contains all query and time range information
+
+### Export Data
+
+From the table view:
+1. Click the download icon
+2. Choose CSV format
+3. Data exports with all columns and time formatting
+
+### Create Dashboard Panel
+
+Convert your Explore query into a dashboard panel:
+
+1. Click **Add to dashboard** (when available)
+2. Select target dashboard
+3. Configure panel options
+4. Save the dashboard
+
+## Best Practices
+
+<AccordionGroup>
+  <Accordion title="Optimize query performance">
+    - Use specific label filters to reduce series cardinality
+    - Avoid queries that select thousands of time series
+    - Use appropriate time ranges - longer ranges require more processing
+    - Apply `rate()` before aggregation functions like `sum()`
+  </Accordion>
+  
+  <Accordion title="Use the query builder for exploration">
+    - Start with the visual query builder when exploring unfamiliar metrics
+    - Switch to code mode for advanced PromQL features
+    - Use metrics browser to discover available metrics and labels
+  </Accordion>
+  
+  <Accordion title="Leverage split view for correlation">
+    - Compare metrics before and after a deployment
+    - View related metrics side-by-side (CPU vs. memory, requests vs. errors)
+    - Use time sync to ensure consistent time ranges
+  </Accordion>
+  
+  <Accordion title="Save frequently used queries">
+    - Use query history to access recent queries
+    - Star important queries for quick access
+    - Consider creating dashboards for regularly-reviewed metrics
+  </Accordion>
+</AccordionGroup>
+
+## Troubleshooting
+
+### No data returned
+
+- Verify the time range includes data for your metric
+- Check label filters aren't too restrictive
+- Confirm the metric exists in your Prometheus instance
+- Use the metrics browser to explore available metrics
+
+### Query timeout
+
+- Reduce the time range
+- Add more specific label filters
+- Simplify complex aggregations
+- Check Prometheus performance and resource limits
+
+### Too many series
+
+- Add label filters to reduce cardinality
+- Use aggregation to combine related series
+- Consider if you need all the data or just a subset
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Querying Logs" icon="file-lines" href="./querying-logs">
+    Learn how to explore and analyze log data
+  </Card>
+  
+  <Card title="Distributed Tracing" icon="diagram-project" href="./tracing">
+    Investigate traces and service dependencies
+  </Card>
+</CardGroup>

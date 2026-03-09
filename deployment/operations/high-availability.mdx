@@ -1,0 +1,524 @@
+---
+title: High availability
+description: Deploy Grafana in high availability mode for production workloads
+keywords:
+  - grafana
+  - high availability
+  - clustering
+  - load balancing
+  - scalability
+---
+
+# High availability
+
+High availability (HA) configurations ensure Grafana remains accessible even when individual instances fail. This guide covers HA deployment architectures, configuration, and operational considerations.
+
+## Understanding high availability mode
+
+Grafana supports running multiple instances that share a common database. This configuration provides:
+
+- **Redundancy** - Service continues if an instance fails
+- **Load distribution** - Requests distributed across instances
+- **Zero-downtime updates** - Rolling updates without service interruption
+- **Horizontal scalability** - Add instances to handle increased load
+
+### High availability mode setting
+
+The `high_availability` database setting controls how Grafana handles shared state:
+
+```ini
+[database]
+high_availability = true
+```
+
+When set to `true`, Grafana:
+
+- Relies on the database for coordination between instances
+- Uses database-based locking for background tasks
+- Enables distributed caching mechanisms
+
+ When set to `false` (single instance mode):
+
+- Runs background tasks in-process
+- Uses simpler, non-distributed algorithms
+- Assumes single instance deployment
+
+**Default:** `true` (refer to `conf/defaults.ini:160`)
+
+**Important:** Only set to `false` if you run a single Grafana instance.
+
+## Architecture components
+
+A typical HA deployment includes:
+
+### Multiple Grafana instances
+
+Run two or more Grafana instances with:
+
+- Identical configuration files
+- Shared external database
+- Shared session storage (optional but recommended)
+- Same version and plugins
+
+### Shared database
+
+Use an external database for shared state:
+
+- **PostgreSQL** - Recommended for production
+- **MySQL** - Suitable for production
+- **SQLite** - Not supported for HA (single file limitation)
+
+### Load balancer
+
+Distribute requests across instances:
+
+- Layer 7 (HTTP) load balancing
+- Health check endpoints (`/api/health`)
+- Session affinity (optional, see session storage)
+- TLS termination (recommended)
+
+### Session storage
+
+Share sessions across instances:
+
+- **Redis** - Recommended for production
+- **Memcached** - Alternative distributed cache
+- **Database** - Default, uses Grafana database
+
+## Configuration for high availability
+
+### Database configuration
+
+Configure Grafana to use a shared PostgreSQL database:
+
+```ini
+[database]
+type = postgres
+host = postgres.example.com:5432
+name = grafana
+user = grafana
+password = <PASSWORD>
+
+# Enable HA mode
+high_availability = true
+
+# Connection pool settings for multiple instances
+max_idle_conn = 2
+max_open_conn = 10
+conn_max_lifetime = 14400
+```
+
+Replace `<PASSWORD>` with your database password.
+
+**MySQL example:**
+
+```ini
+[database]
+type = mysql
+host = mysql.example.com:3306
+name = grafana
+user = grafana
+password = <PASSWORD>
+high_availability = true
+```
+
+### Session storage configuration
+
+Configure Redis for shared sessions:
+
+```ini
+[remote_cache]
+type = redis
+connstr = network=tcp,addr=redis.example.com:6379,pool_size=100,db=0,password=<REDIS_PASSWORD>,ssl=false
+prefix = grafana:
+```
+
+Replace `<REDIS_PASSWORD>` with your Redis password.
+
+**Memcached example:**
+
+```ini
+[remote_cache]
+type = memcached
+connstr = memcached.example.com:11211
+```
+
+Refer to `conf/defaults.ini:231` for cache configuration options.
+
+### Server configuration
+
+Configure each instance with unique identifier (optional but helpful for debugging):
+
+```ini
+[server]
+instance_name = grafana-instance-01
+```
+
+### Live features configuration
+
+For real-time features like live dashboards, configure a message bus:
+
+```ini
+[live]
+ha_engine = redis
+ha_engine_address = redis.example.com:6379
+ha_engine_password = <REDIS_PASSWORD>
+```
+
+This ensures real-time updates propagate across all instances.
+
+## Deployment architectures
+
+### Basic HA deployment
+
+```text
+┌─────────────┐
+│Load Balancer│
+└──────┬──────┘
+       │
+   ┌───┴───┐
+   │       │
+┌──▼──┐ ┌──▼──┐
+│ GF1 │ │ GF2 │
+└──┬──┘ └──┬──┘
+   │       │
+   └───┬───┘
+       │
+ ┌─────▼──────┐
+ │ PostgreSQL │
+ └────────────┘
+```
+
+Components:
+
+- 2+ Grafana instances (GF1, GF2)
+- Load balancer distributing traffic
+- Shared PostgreSQL database
+
+### Production HA deployment
+
+```text
+┌─────────────────┐
+│  Load Balancer  │
+│  (HA Pair)      │
+└────────┬────────┘
+         │
+    ┌────┴────┐
+    │         │
+┌───▼──┐  ┌───▼──┐  ┌──────┐
+│ GF1  │  │ GF2  │  │ GF3  │
+└───┬──┘  └───┬──┘  └───┬──┘
+    │         │         │
+    └────┬────┴────┬────┘
+         │         │
+  ┌──────▼───┐  ┌──▼──────┐
+  │PostgreSQL│  │  Redis  │
+  │(Primary +│  │(HA Pair)│
+  │ Replica) │  └─────────┘
+  └──────────┘
+```
+
+Components:
+
+- 3+ Grafana instances for resilience
+- HA load balancer pair
+- PostgreSQL with replication
+- Redis HA for session storage
+
+### Kubernetes deployment
+
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: grafana
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: grafana
+  template:
+    metadata:
+      labels:
+        app: grafana
+    spec:
+      containers:
+      - name: grafana
+        image: grafana/grafana:12.4.0
+        env:
+        - name: GF_DATABASE_TYPE
+          value: postgres
+        - name: GF_DATABASE_HOST
+          value: postgres:5432
+        - name: GF_DATABASE_NAME
+          value: grafana
+        - name: GF_DATABASE_USER
+          valueFrom:
+            secretKeyRef:
+              name: grafana-db
+              key: username
+        - name: GF_DATABASE_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: grafana-db
+              key: password
+        - name: GF_DATABASE_HIGH_AVAILABILITY
+          value: "true"
+        - name: GF_REMOTE_CACHE_TYPE
+          value: redis
+        - name: GF_REMOTE_CACHE_CONNSTR
+          value: "network=tcp,addr=redis:6379,db=0"
+        ports:
+        - containerPort: 3000
+        livenessProbe:
+          httpGet:
+            path: /livez
+            port: 3000
+          initialDelaySeconds: 30
+        readinessProbe:
+          httpGet:
+            path: /readyz
+            port: 3000
+          initialDelaySeconds: 10
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: grafana
+spec:
+  type: LoadBalancer
+  selector:
+    app: grafana
+  ports:
+  - port: 80
+    targetPort: 3000
+```
+
+## Load balancing configuration
+
+### Health checks
+
+Configure your load balancer to use Grafana health endpoints:
+
+**Liveness check:**
+
+- Endpoint: `/livez`
+- Expected status: `200 OK`
+- Use for: Detecting dead instances
+
+**Readiness check:**
+
+- Endpoint: `/readyz`
+- Expected status: `200 OK`
+- Use for: Routing traffic only to ready instances
+
+**Database health check:**
+
+- Endpoint: `/api/health`
+- Expected status: `200 OK`
+- Use for: Comprehensive health verification
+
+### NGINX example
+
+```nginx
+upstream grafana {
+    least_conn;
+    server grafana1.example.com:3000 max_fails=3 fail_timeout=30s;
+    server grafana2.example.com:3000 max_fails=3 fail_timeout=30s;
+    server grafana3.example.com:3000 max_fails=3 fail_timeout=30s;
+}
+
+server {
+    listen 80;
+    server_name grafana.example.com;
+
+    location / {
+        proxy_pass http://grafana;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    # Health check endpoint
+    location /health {
+        access_log off;
+        proxy_pass http://grafana/api/health;
+    }
+}
+```
+
+### HAProxy example
+
+```haproxy
+frontend grafana_frontend
+    bind *:80
+    default_backend grafana_backend
+
+backend grafana_backend
+    balance leastconn
+    option httpchk GET /api/health
+    http-check expect status 200
+    server grafana1 grafana1.example.com:3000 check
+    server grafana2 grafana2.example.com:3000 check
+    server grafana3 grafana3.example.com:3000 check
+```
+
+## Database high availability
+
+The shared database is a critical component. Ensure database HA:
+
+### PostgreSQL replication
+
+Set up PostgreSQL streaming replication:
+
+1. Configure primary server for replication
+2. Set up one or more replica servers
+3. Use connection pooler (PgBouncer) for load distribution
+4. Configure automatic failover (Patroni, repmgr)
+
+Grafana connects to the primary for writes. Optionally configure read replicas for queries.
+
+### MySQL replication
+
+Set up MySQL replication:
+
+1. Configure primary-replica replication
+2. Use ProxySQL or MySQL Router for connection routing
+3. Configure automatic failover with orchestration tools
+
+## Session affinity considerations
+
+Session affinity (sticky sessions) is **not required** when using shared session storage (Redis/Memcached). Without shared storage, consider session affinity:
+
+**With shared session storage:**
+
+- No session affinity needed
+- True load distribution
+- Better failover handling
+
+**Without shared session storage:**
+
+- Enable session affinity in load balancer
+- Sessions lost on instance failure
+- Less efficient load distribution
+
+## Scaling considerations
+
+### Horizontal scaling
+
+Add more Grafana instances to handle increased load:
+
+- Monitor CPU and memory usage
+- Add instances when metrics exceed thresholds
+- Instances are stateless (with shared storage)
+- Scale based on request rate and user count
+
+### Database scaling
+
+Scale the database for performance:
+
+- Increase connection pool size per instance
+- Add read replicas for query load
+- Upgrade database server resources
+- Optimize slow queries
+
+### Cache scaling
+
+Scale Redis/Memcached for session storage:
+
+- Use Redis cluster for horizontal scaling
+- Configure Redis persistence for durability
+- Monitor cache hit rates
+
+## Operational procedures
+
+### Rolling updates
+
+Perform zero-downtime updates:
+
+1. Update one instance at a time
+2. Wait for health checks to pass
+3. Verify functionality before updating next instance
+4. Roll back if issues detected
+
+**Example procedure:**
+
+```sh
+# Update instance 1
+ssh grafana1 'sudo systemctl stop grafana-server'
+ssh grafana1 'sudo apt-get update && sudo apt-get install grafana'
+ssh grafana1 'sudo systemctl start grafana-server'
+
+# Wait and verify
+curl http://grafana1:3000/api/health
+
+# Repeat for instance 2, 3, etc.
+```
+
+### Monitoring HA deployments
+
+Monitor these metrics across all instances:
+
+- Instance health status
+- Request distribution across instances
+- Database connection pool usage
+- Cache hit rates
+- Response times per instance
+- Error rates per instance
+
+Refer to the [monitoring guide](./monitoring) for detailed metrics.
+
+### Backup in HA environments
+
+Back up the shared database and configuration:
+
+- Database backups cover all instances
+- Back up configuration from one instance
+- Test restore procedures regularly
+- Consider point-in-time recovery for databases
+
+Refer to the [backup and restore guide](./backup-restore) for procedures.
+
+## Troubleshooting
+
+### Instance registration issues
+
+If instances don't recognize each other:
+
+- Verify `high_availability = true` in configuration
+- Check database connectivity from all instances
+- Review logs for database connection errors
+- Ensure instances use the same database schema version
+
+### Session persistence issues
+
+If users experience session drops:
+
+- Verify Redis/Memcached connectivity
+- Check `remote_cache` configuration
+- Monitor cache expiration settings
+- Review load balancer session affinity settings
+
+### Load distribution problems
+
+If traffic isn't distributed evenly:
+
+- Check load balancer algorithm (use `leastconn`)
+- Verify health checks are working
+- Review instance resource utilization
+- Check for instance-specific errors
+
+## Limitations and constraints
+
+- **Database requirement** - External database required (PostgreSQL or MySQL)
+- **SQLite not supported** - Cannot use SQLite in HA mode
+- **Plugin data** - File-based plugin data not automatically synchronized
+- **Image rendering** - May require additional configuration for rendering service
+- **Configuration drift** - Ensure configurations stay synchronized across instances
+
+## Next steps
+
+- Set up [monitoring](./monitoring) for HA metrics
+- Configure [backup procedures](./backup-restore) for shared database
+- Plan [upgrade procedures](./upgrading) for rolling updates

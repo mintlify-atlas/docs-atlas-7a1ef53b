@@ -1,0 +1,479 @@
+---
+title: Notification Policies
+description: Configure how alerts are routed to contact points in Grafana
+---
+
+Notification policies (also called routing policies) determine how alerts are routed to contact points based on labels. They provide flexible routing logic with support for grouping, timing, and muting.
+
+## Policy Structure
+
+Notification policies form a tree structure where alerts are matched against routes:
+
+<CodeGroup>
+
+```typescript Route Definition
+interface FormAmRoute {
+  id: string;
+  name?: string;              // Named route identifier
+  
+  // Matching
+  object_matchers: MatcherFieldValue[];
+  continue: boolean;          // Continue to next sibling routes
+  
+  // Destination
+  receiver: string;           // Contact point name
+  
+  // Grouping
+  overrideGrouping: boolean;
+  groupBy?: string[];         // Labels to group by
+  
+  // Timing
+  overrideTimings: boolean;
+  groupWaitValue: string;     // Wait before sending first notification
+  groupIntervalValue: string; // Wait before sending updates
+  repeatIntervalValue: string;// Wait before repeating notifications
+  
+  // Muting
+  muteTimeIntervals: string[];   // When not to send
+  activeTimeIntervals: string[]; // When to send
+  
+  // Nested routes
+  routes: FormAmRoute[];
+}
+```
+
+```typescript Matcher
+interface MatcherFieldValue {
+  name: string;                    // Label name
+  value: string;                   // Label value
+  operator: MatcherOperator;       // How to match
+}
+
+type MatcherOperator =
+  | '='   // Equal
+  | '!='  // Not equal
+  | '=~'  // Regex match
+  | '!~'; // Regex not match
+```
+
+</CodeGroup>
+
+## Root Route
+
+Every notification policy tree has a root route that acts as the default:
+
+```typescript
+{
+  receiver: 'default-contact-point',
+  groupBy: ['alertname', 'grafana_folder'],
+  groupWaitValue: '30s',
+  groupIntervalValue: '5m',
+  repeatIntervalValue: '4h',
+  routes: [
+    // Child routes...
+  ]
+}
+```
+
+<Note>
+The root route:
+- Has no matchers (matches all alerts)
+- Cannot be deleted
+- Provides default timing and grouping
+- Acts as fallback when no child routes match
+</Note>
+
+## Label Matchers
+
+Matchers determine which alerts a route handles:
+
+<CodeGroup>
+
+```typescript Exact Match
+{
+  name: 'severity',
+  operator: '=',
+  value: 'critical'
+}
+// Matches: severity="critical"
+```
+
+```typescript Not Equal
+{
+  name: 'team',
+  operator: '!=',
+  value: 'frontend'
+}
+// Matches: team!="frontend" or no team label
+```
+
+```typescript Regex Match
+{
+  name: 'service',
+  operator: '=~',
+  value: 'api-.*'
+}
+// Matches: service=~"api-.*" (api-v1, api-v2, etc.)
+```
+
+```typescript Regex Not Match
+{
+  name: 'environment',
+  operator: '!~',
+  value: 'dev|test'
+}
+// Matches: environment!~"dev|test"
+```
+
+</CodeGroup>
+
+## Grouping
+
+Grouping combines related alerts into single notifications:
+
+### Group By Labels
+
+```typescript
+groupBy: ['alertname', 'cluster', 'service']
+```
+
+Alerts with the same values for these labels are grouped together:
+
+```
+Alert 1: {alertname="HighCPU", cluster="prod", service="api"}
+Alert 2: {alertname="HighCPU", cluster="prod", service="api"}
+Alert 3: {alertname="HighCPU", cluster="prod", service="web"}
+
+Result:
+- Group 1: [Alert 1, Alert 2] → Single notification
+- Group 2: [Alert 3] → Separate notification
+```
+
+### Special Grouping
+
+<CodeGroup>
+
+```typescript Group All
+groupBy: ['...']  // Single group (all alerts together)
+```
+
+```typescript No Grouping
+groupBy: []  // Each alert sent separately
+```
+
+</CodeGroup>
+
+## Timing Controls
+
+### Group Wait
+
+Wait time before sending the first notification for a new group:
+
+```typescript
+groupWaitValue: '30s'
+```
+
+Allows collecting multiple alerts before sending.
+
+### Group Interval
+
+Wait time before sending updates about existing groups:
+
+```typescript
+groupIntervalValue: '5m'
+```
+
+Controls how often you receive updates when alerts are added/resolved in a group.
+
+### Repeat Interval
+
+Wait time before resending a notification for the same group:
+
+```typescript
+repeatIntervalValue: '4h'
+```
+
+Prevents notification spam for ongoing incidents.
+
+<Warning>
+Timing hierarchy:
+- Child routes can override parent timings if `overrideTimings: true`
+- If not overridden, parent timings are inherited
+- Root route provides defaults for the entire tree
+</Warning>
+
+## Continue Flag
+
+The `continue` flag controls routing behavior:
+
+```typescript
+{
+  object_matchers: [
+    { name: 'severity', operator: '=', value: 'critical' }
+  ],
+  receiver: 'pagerduty',
+  continue: true,  // Also check sibling routes
+  routes: []
+}
+```
+
+<Steps>
+  <Step title="Without Continue (false)">
+    Alert matches → Route to contact point → Stop processing
+  </Step>
+  
+  <Step title="With Continue (true)">
+    Alert matches → Route to contact point → Continue to next sibling route
+  </Step>
+</Steps>
+
+## Mute Timings
+
+Mute timings suppress notifications during specific time periods:
+
+### Mute Time Intervals
+
+```typescript
+muteTimeIntervals: ['business-hours', 'weekends']
+```
+
+Notifications are **blocked** during these intervals.
+
+### Active Time Intervals
+
+```typescript
+activeTimeIntervals: ['on-call-hours']
+```
+
+Notifications are **allowed only** during these intervals.
+
+<Note>
+Time intervals are defined separately and referenced by name in routes.
+See the Mute Timings documentation for details on creating time intervals.
+</Note>
+
+## Named Routes
+
+Routes can be named for easier management:
+
+```typescript
+{
+  name: 'critical-alerts-policy',
+  object_matchers: [
+    { name: 'severity', operator: '=', value: 'critical' }
+  ],
+  receiver: 'pagerduty'
+}
+```
+
+## Policy Examples
+
+### Multi-Tier Routing
+
+```typescript
+{
+  receiver: 'default',
+  groupBy: ['alertname'],
+  routes: [
+    {
+      // Critical alerts to PagerDuty
+      object_matchers: [
+        { name: 'severity', operator: '=', value: 'critical' }
+      ],
+      receiver: 'pagerduty',
+      groupWaitValue: '10s',
+      repeatIntervalValue: '1h'
+    },
+    {
+      // Team-based routing
+      object_matchers: [
+        { name: 'team', operator: '=', value: 'backend' }
+      ],
+      receiver: 'backend-slack',
+      routes: [
+        {
+          // Backend + Critical → Both channels
+          object_matchers: [
+            { name: 'severity', operator: '=', value: 'critical' }
+          ],
+          receiver: 'backend-oncall',
+          continue: true  // Also send to backend-slack
+        }
+      ]
+    },
+    {
+      // Frontend team
+      object_matchers: [
+        { name: 'team', operator: '=', value: 'frontend' }
+      ],
+      receiver: 'frontend-slack'
+    }
+  ]
+}
+```
+
+### Environment-Based Routing
+
+```typescript
+{
+  receiver: 'default',
+  routes: [
+    {
+      object_matchers: [
+        { name: 'environment', operator: '=', value: 'production' }
+      ],
+      receiver: 'prod-alerts',
+      muteTimeIntervals: ['maintenance-window']
+    },
+    {
+      object_matchers: [
+        { name: 'environment', operator: '=~', value: 'staging|dev' }
+      ],
+      receiver: 'non-prod-alerts',
+      repeatIntervalValue: '12h'  // Less frequent for non-prod
+    }
+  ]
+}
+```
+
+## Auto-Generated Routes
+
+Grafana automatically generates routes for alert rules with inline notification settings:
+
+<CodeGroup>
+
+```typescript Alert Rule with Notifications
+{
+  title: 'High CPU',
+  notificationSettings: {
+    contactPointRouting: {
+      receiver: 'ops-team',
+      groupBy: ['instance'],
+      groupWait: '30s'
+    }
+  }
+}
+```
+
+```typescript Generated Route
+// Grafana automatically creates:
+{
+  object_matchers: [
+    { name: '__grafana_receiver__', operator: '=', value: 'ops-team' },
+    { name: '__grafana_route_settings_hash__', operator: '=', value: 'abc123' }
+  ],
+  receiver: 'ops-team',
+  groupBy: ['instance'],
+  groupWaitValue: '30s'
+}
+```
+
+</CodeGroup>
+
+<Warning>
+Auto-generated routes:
+- Are managed by Grafana
+- Cannot be manually edited
+- Are updated when rule notification settings change
+- Use special `__grafana_*` labels for matching
+</Warning>
+
+## Backend Configuration
+
+<CodeGroup>
+
+```go Route Configuration
+// Location: pkg/services/ngalert/notifier/alertmanager_config.go
+type Route struct {
+    Receiver       string
+    GroupByStr     []string
+    Match          map[string]string
+    MatchRE        map[string]string
+    ObjectMatchers []ObjectMatcher
+    Continue       bool
+    Routes         []*Route
+    GroupWait      *time.Duration
+    GroupInterval  *time.Duration
+    RepeatInterval *time.Duration
+    MuteTimeIntervals []string
+    ActiveTimeIntervals []string
+}
+```
+
+```go Object Matcher
+type ObjectMatcher struct {
+    Name    string
+    Value   string
+    IsRegex bool
+    IsEqual bool
+}
+```
+
+</CodeGroup>
+
+## Validation Rules
+
+<Steps>
+  <Step title="Receiver Exists">
+    Referenced contact point must exist
+  </Step>
+  
+  <Step title="Time Intervals Exist">
+    Mute/active time intervals must be defined
+  </Step>
+  
+  <Step title="Valid Matchers">
+    Matchers must have valid regex patterns
+  </Step>
+  
+  <Step title="No Circular Routes">
+    Routes cannot reference themselves
+  </Step>
+  
+  <Step title="Timing Constraints">
+    repeatInterval ≥ groupInterval
+  </Step>
+</Steps>
+
+## Best Practices
+
+<AccordionGroup>
+  <Accordion title="Use specific matchers">
+    Match on stable, meaningful labels like `team`, `service`, `severity` rather than dynamic values.
+  </Accordion>
+  
+  <Accordion title="Group intelligently">
+    Group by labels that represent a single incident (e.g., `alertname`, `cluster`, `service`).
+  </Accordion>
+  
+  <Accordion title="Set appropriate timings">
+    - `groupWait`: 30s-1m for collecting related alerts
+    - `groupInterval`: 5m for update frequency
+    - `repeatInterval`: 4h-12h to avoid notification fatigue
+  </Accordion>
+  
+  <Accordion title="Use continue sparingly">
+    Only use `continue: true` when alerts truly need multiple destinations. It can cause notification duplication.
+  </Accordion>
+  
+  <Accordion title="Test your policies">
+    Use the notification policy preview to verify routing before deploying.
+  </Accordion>
+</AccordionGroup>
+
+## Related Resources
+
+<CardGroup cols={2}>
+  <Card title="Contact Points" icon="envelope" href="./contact-points">
+    Configure notification destinations
+  </Card>
+  <Card title="Alert Rules" icon="bell" href="./alert-rules">
+    Create rules that generate alerts
+  </Card>
+  <Card title="Silences" icon="bell-slash" href="./silences">
+    Temporarily mute notifications
+  </Card>
+  <Card title="Overview" icon="book" href="./overview">
+    Understand the alerting architecture
+  </Card>
+</CardGroup>

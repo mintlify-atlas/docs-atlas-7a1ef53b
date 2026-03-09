@@ -1,0 +1,107 @@
+---
+title: Installation Overview
+description: Overview of Grafana installation methods and system requirements
+---
+
+# Installation Overview
+
+Grafana is a monitoring and observability platform available in two editions: Grafana Enterprise and Grafana Open Source. This guide covers multiple installation methods to help you deploy Grafana in your environment.
+
+## Editions
+
+Grafana is available in two editions:
+
+- **Grafana Enterprise**: The recommended and default edition. It is available for free and includes all the features of the OSS edition. You can upgrade to the full Enterprise feature set, which includes support for Enterprise plugins.
+- **Grafana Open Source (OSS)**: Functionally identical to the Enterprise version, but you will need to download the Enterprise version if you want Enterprise features.
+
+## Installation Methods
+
+Choose the installation method that best suits your infrastructure:
+
+- **[Docker](docker)**: Run Grafana in containers using Docker CLI or Docker Compose
+- **[Kubernetes](kubernetes)**: Deploy Grafana on Kubernetes using manifests or Helm charts
+- **[Debian/Ubuntu](debian-ubuntu)**: Install on Debian-based systems using APT repository or DEB packages
+- **[RPM-based Systems](rpm-based)**: Install on RHEL, Fedora, CentOS using YUM/DNF repository or RPM packages
+
+## System Requirements
+
+Before you begin, ensure your system meets the minimum requirements.
+
+### Hardware Requirements
+
+**Minimum resources:**
+
+- Memory: 512 MB
+- CPU: 1 core
+- Disk space: 1 GB
+
+**Recommended for production (Small tier):**
+
+- Memory: 2-4 GB
+- CPU: 2 cores
+- Disk space: 10-20 GB SSD
+
+### Deployment Tiers
+
+| Tier   | Concurrent Users | Alert Rules | Data Sources | Dashboards  | CPU Cores | Memory   |
+|--------|------------------|-------------|--------------|-------------|-----------|----------|
+| Small  | < 25             | < 100       | < 5          | < 200       | 2         | 2-4 GB   |
+| Medium | 25-200           | 100-1,000   | 5-25         | 200-2,000   | 4-8       | 8-16 GB  |
+| Large  | 200+             | 1,000+      | 25+          | 2,000+      | 8-16+     | 16-32+ GB|
+
+### Supported Databases
+
+Grafana supports the following databases for storing configuration data:
+
+- SQLite 3 (default, not recommended for production)
+- MySQL 8.0+
+- PostgreSQL 12+
+
+<Note>
+SQLite works well for local development and small evaluation instances, but it doesn't scale for production workloads. For production deployments, use MySQL or PostgreSQL.
+</Note>
+
+### Supported Operating Systems
+
+- Debian 9 or later
+- Ubuntu 18.04 LTS or later
+- RHEL 8 or later
+- Fedora 34 or later
+- CentOS 8 or later
+- Alpine Linux 3.23+
+- macOS
+- Windows
+
+### Supported Web Browsers
+
+Grafana supports the current version of:
+
+- Chrome/Chromium
+- Firefox
+- Safari
+- Microsoft Edge
+
+<Note>
+JavaScript must be enabled in your browser. Running Grafana without JavaScript is not supported.
+</Note>
+
+## Default Configuration
+
+After installation, Grafana runs with the following defaults:
+
+- **Port**: 3000 (HTTP)
+- **Default credentials**: Username `admin`, password `admin` (change on first login)
+- **Configuration file**: `/etc/grafana/grafana.ini`
+- **Data directory**: `/var/lib/grafana`
+- **Logs directory**: `/var/log/grafana`
+- **Plugins directory**: `/var/lib/grafana/plugins`
+- **Provisioning directory**: `/etc/grafana/provisioning`
+
+## Next Steps
+
+Select an installation method:
+
+- [Install using Docker](docker)
+- [Deploy on Kubernetes](kubernetes)
+- [Install on Debian/Ubuntu](debian-ubuntu)
+- [Install on RPM-based systems](rpm-based)

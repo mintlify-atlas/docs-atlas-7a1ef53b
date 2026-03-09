@@ -1,0 +1,604 @@
+---
+title: Plugin architecture
+description: Understand Grafana's plugin system and how to extend Grafana
+---
+
+# Plugin architecture
+
+Grafana's plugin system enables extending Grafana with new visualizations, data sources, and applications without modifying core code.
+
+## Plugin types
+
+Grafana supports three main plugin types:
+
+### Panel plugins
+
+Visualization types that display data:
+- Graph, table, stat, gauge, etc.
+- Render query results
+- Custom visualization logic
+- Editor UI for configuration
+
+### Data source plugins
+
+Connect Grafana to data sources:
+- Query editors
+- Backend query execution
+- Authentication and connection management
+- Alerting support (optional)
+
+### App plugins
+
+Full applications within Grafana:
+- Custom pages and navigation
+- Can include multiple panels and data sources
+- Configuration pages
+- Custom workflows
+
+## Plugin structure
+
+A typical plugin directory:
+
+```
+my-plugin/
+├── src/
+│   ├── module.ts          # Plugin entry point
+│   ├── plugin.json        # Plugin metadata
+│   ├── components/        # React components
+│   ├── types.ts          # TypeScript types
+│   └── img/              # Images and icons
+├── pkg/                  # Backend (Go) - optional
+│   ├── main.go
+│   └── plugin/
+├── Magefile.go           # Build configuration
+└── package.json
+```
+
+## Plugin metadata (plugin.json)
+
+The `plugin.json` file defines plugin metadata:
+
+```json
+{
+  "type": "panel",
+  "name": "My Visualization",
+  "id": "myorg-mypanel-panel",
+  "info": {
+    "description": "Custom visualization plugin",
+    "author": {
+      "name": "My Organization"
+    },
+    "version": "1.0.0"
+  },
+  "dependencies": {
+    "grafanaDependency": ">=9.0.0",
+    "plugins": []
+  },
+  "backend": true,
+  "executable": "gpx_mypanel",
+  "routes": [
+    {
+      "path": "api/resource",
+      "method": "GET",
+      "url": "http://localhost:8080"
+    }
+  ]
+}
+```
+
+**Key fields:**
+- `type` - Plugin type: `panel`, `datasource`, or `app`
+- `id` - Unique plugin identifier (format: `org-name-type`)
+- `backend` - Whether plugin has a backend component
+- `executable` - Backend binary name
+- `routes` - Custom API routes
+- `dependencies` - Required Grafana version and other plugins
+
+## Frontend plugin architecture
+
+### Panel plugin example
+
+```typescript
+// src/module.ts
+import { PanelPlugin } from '@grafana/data';
+import { MyPanel } from './components/MyPanel';
+import { MyOptions } from './types';
+
+export const plugin = new PanelPlugin<MyOptions>(MyPanel)
+  .setPanelOptions((builder) => {
+    return builder
+      .addTextInput({
+        path: 'title',
+        name: 'Title',
+        description: 'Panel title',
+        defaultValue: 'My Panel',
+      })
+      .addNumberInput({
+        path: 'fontSize',
+        name: 'Font size',
+        defaultValue: 14,
+      });
+  });
+```
+
+```typescript
+// src/components/MyPanel.tsx
+import React from 'react';
+import { PanelProps } from '@grafana/data';
+import { MyOptions } from '../types';
+
+interface Props extends PanelProps<MyOptions> {}
+
+export function MyPanel({ options, data, width, height }: Props) {
+  return (
+    <div style={{ width, height }}>
+      <h2>{options.title}</h2>
+      <div>Data series: {data.series.length}</div>
+    </div>
+  );
+}
+```
+
+### Data source plugin example
+
+```typescript
+// src/module.ts
+import { DataSourcePlugin } from '@grafana/data';
+import { DataSource } from './datasource';
+import { ConfigEditor } from './components/ConfigEditor';
+import { QueryEditor } from './components/QueryEditor';
+import { MyQuery, MyDataSourceOptions } from './types';
+
+export const plugin = new DataSourcePlugin<DataSource, MyQuery, MyDataSourceOptions>(DataSource)
+  .setConfigEditor(ConfigEditor)
+  .setQueryEditor(QueryEditor);
+```
+
+```typescript
+// src/datasource.ts
+import { DataSourceInstanceSettings, DataQueryRequest, DataQueryResponse } from '@grafana/data';
+import { DataSourceWithBackend } from '@grafana/runtime';
+import { MyQuery, MyDataSourceOptions } from './types';
+
+export class DataSource extends DataSourceWithBackend<MyQuery, MyDataSourceOptions> {
+  constructor(instanceSettings: DataSourceInstanceSettings<MyDataSourceOptions>) {
+    super(instanceSettings);
+  }
+  
+  // Frontend can override query method for client-side logic
+  // Otherwise queries go to backend automatically
+}
+```
+
+### App plugin example
+
+```typescript
+// src/module.ts
+import { AppPlugin } from '@grafana/data';
+import { AppConfig } from './components/AppConfig';
+import { AppRootPage } from './components/AppRootPage';
+
+export const plugin = new AppPlugin<{}>()
+  .setRootPage(AppRootPage)
+  .addConfigPage({
+    title: 'Configuration',
+    icon: 'cog',
+    body: AppConfig,
+    id: 'configuration',
+  });
+```
+
+## Backend plugin architecture
+
+Backend plugins run as separate processes and communicate with Grafana via gRPC.
+
+### Backend structure
+
+From `pkg/plugins/plugins.go`:
+
+```go
+type Plugin struct {
+    JSONData        // Metadata from plugin.json
+    FS              // File system access
+    Class           // Core or external
+    Signature       // Signature validation
+    client          backendplugin.Plugin
+}
+
+type PluginClient interface {
+    backend.QueryDataHandler
+    backend.CheckHealthHandler
+    backend.CallResourceHandler
+    backend.StreamHandler
+}
+```
+
+### Backend plugin implementation
+
+```go
+// pkg/main.go
+package main
+
+import (
+    "context"
+    "os"
+    
+    "github.com/grafana/grafana-plugin-sdk-go/backend"
+    "github.com/grafana/grafana-plugin-sdk-go/backend/datasource"
+    "github.com/grafana/grafana-plugin-sdk-go/backend/log"
+)
+
+type MyDatasource struct{}
+
+func (d *MyDatasource) QueryData(ctx context.Context, req *backend.QueryDataRequest) (*backend.QueryDataResponse, error) {
+    response := backend.NewQueryDataResponse()
+    
+    for _, q := range req.Queries {
+        // Parse query
+        var query MyQuery
+        if err := json.Unmarshal(q.JSON, &query); err != nil {
+            return nil, err
+        }
+        
+        // Execute query and build response
+        frame := data.NewFrame("response")
+        frame.Fields = append(frame.Fields,
+            data.NewField("time", nil, []time.Time{time.Now()}),
+            data.NewField("value", nil, []float64{42.0}),
+        )
+        
+        response.Responses[q.RefID] = backend.DataResponse{
+            Frames: []*data.Frame{frame},
+        }
+    }
+    
+    return response, nil
+}
+
+func (d *MyDatasource) CheckHealth(ctx context.Context, req *backend.CheckHealthRequest) (*backend.CheckHealthResult, error) {
+    return &backend.CheckHealthResult{
+        Status:  backend.HealthStatusOk,
+        Message: "Data source is working",
+    }, nil
+}
+
+func main() {
+    if err := datasource.Manage("myorg-mydatasource-datasource", NewDatasourceInstance, datasource.ManageOpts{}); err != nil {
+        log.DefaultLogger.Error(err.Error())
+        os.Exit(1)
+    }
+}
+
+func NewDatasourceInstance(ctx context.Context, settings backend.DataSourceInstanceSettings) (instancemgmt.Instance, error) {
+    return &MyDatasource{}, nil
+}
+```
+
+### Backend plugin handlers
+
+#### QueryData handler
+
+Execute data queries:
+
+```go
+func (d *MyDatasource) QueryData(ctx context.Context, req *backend.QueryDataRequest) (*backend.QueryDataResponse, error) {
+    // req contains:
+    // - Queries: list of queries to execute
+    // - PluginContext: datasource settings, user info
+    // - Headers: HTTP headers
+    
+    // Return DataResponse with Frames
+}
+```
+
+#### CallResource handler
+
+Custom API endpoints:
+
+```go
+func (d *MyDatasource) CallResource(ctx context.Context, req *backend.CallResourceRequest, sender backend.CallResourceResponseSender) error {
+    // req.Path: API path
+    // req.Method: HTTP method
+    // req.Body: request body
+    
+    switch req.Path {
+    case "metrics":
+        metrics := getMetrics()
+        return sender.Send(&backend.CallResourceResponse{
+            Status: http.StatusOK,
+            Body:   json.Marshal(metrics),
+        })
+    }
+}
+```
+
+#### CheckHealth handler
+
+Health checks:
+
+```go
+func (d *MyDatasource) CheckHealth(ctx context.Context, req *backend.CheckHealthRequest) (*backend.CheckHealthResult, error) {
+    // Test connection to data source
+    if err := testConnection(); err != nil {
+        return &backend.CheckHealthResult{
+            Status:  backend.HealthStatusError,
+            Message: "Connection failed: " + err.Error(),
+        }, nil
+    }
+    
+    return &backend.CheckHealthResult{
+        Status:  backend.HealthStatusOk,
+        Message: "Data source is working",
+    }, nil
+}
+```
+
+#### Stream handler
+
+Streaming data:
+
+```go
+func (d *MyDatasource) SubscribeStream(ctx context.Context, req *backend.SubscribeStreamRequest) (*backend.SubscribeStreamResponse, error) {
+    return &backend.SubscribeStreamResponse{
+        Status: backend.SubscribeStreamStatusOK,
+    }, nil
+}
+
+func (d *MyDatasource) RunStream(ctx context.Context, req *backend.RunStreamRequest, sender *backend.StreamSender) error {
+    ticker := time.NewTicker(1 * time.Second)
+    defer ticker.Stop()
+    
+    for {
+        select {
+        case <-ctx.Done():
+            return ctx.Err()
+        case <-ticker.C:
+            frame := data.NewFrame("stream")
+            // ... add data to frame
+            if err := sender.SendFrame(frame, data.IncludeAll); err != nil {
+                return err
+            }
+        }
+    }
+}
+```
+
+## Plugin communication
+
+### Frontend to backend
+
+Frontend plugins communicate with their backends through the Grafana backend:
+
+```typescript
+// Frontend datasource class
+import { DataSourceWithBackend } from '@grafana/runtime';
+
+export class MyDataSource extends DataSourceWithBackend<MyQuery> {
+  // Queries automatically go to backend
+  
+  // Custom resource call
+  async getMetrics() {
+    return this.getResource('metrics');
+  }
+}
+```
+
+The `DataSourceWithBackend` class handles:
+- Query routing to backend
+- Resource calls
+- Health checks
+- Authentication
+
+### Backend to external services
+
+Backend plugins can make external API calls:
+
+```go
+import "github.com/grafana/grafana-plugin-sdk-go/backend/httpclient"
+
+func (d *MyDatasource) QueryData(ctx context.Context, req *backend.QueryDataRequest) (*backend.QueryDataResponse, error) {
+    // Get HTTP client with proper auth
+    client, err := httpclient.New(httpclient.Options{})
+    if err != nil {
+        return nil, err
+    }
+    
+    // Make external API call
+    resp, err := client.Get("https://api.example.com/data")
+    // ...
+}
+```
+
+## Plugin discovery and loading
+
+Plugins are discovered and loaded through a pipeline in `pkg/plugins/manager/pipeline/`:
+
+### Discovery
+
+1. Scan plugin directories:
+   - Core plugins: `public/app/plugins/`
+   - External plugins: `<data>/plugins/`
+
+2. Read `plugin.json` from each directory
+
+3. Validate plugin structure
+
+### Validation
+
+From `pkg/plugins/manager/pipeline/validation/`:
+
+```go
+type PluginSignatureValidator struct {
+    // Validates plugin signatures
+}
+
+func (v *PluginSignatureValidator) Validate(ctx context.Context, plugin *plugins.Plugin) error {
+    // Check signature based on plugin type
+    // - Core plugins: no signature required
+    // - Bundled plugins: verified at build time
+    // - External plugins: must be signed
+}
+```
+
+### Initialization
+
+From `pkg/plugins/manager/pipeline/initialization/`:
+
+1. Load plugin metadata
+2. Start backend process (if `backend: true`)
+3. Establish gRPC connection
+4. Register with plugin registry
+
+### Registration
+
+```go
+type PluginRegistry interface {
+    Add(ctx context.Context, p *Plugin) error
+    Remove(ctx context.Context, id string) error
+    Plugin(ctx context.Context, id string) (*Plugin, bool)
+    Plugins(ctx context.Context, types ...Type) []*Plugin
+}
+```
+
+## Plugin signing
+
+External plugins must be signed:
+
+1. **Private signature** - For internal use
+2. **Community signature** - For community plugins
+3. **Commercial signature** - For commercial plugins
+
+Unsigned plugins require:
+
+```ini
+# grafana.ini
+[plugins]
+allow_loading_unsigned_plugins = myplugin-panel
+```
+
+## Plugin development workflow
+
+### Create plugin
+
+```bash
+npx @grafana/create-plugin
+```
+
+### Build plugin
+
+```bash
+# Frontend
+yarn build
+
+# Backend
+mage -v build:linux
+```
+
+### Development mode
+
+```bash
+# Frontend watch mode
+yarn dev
+
+# Backend with debugging
+mage -v reloadPlugin
+```
+
+### Test plugin
+
+```bash
+# Frontend tests
+yarn test
+
+# Backend tests
+go test ./pkg/...
+
+# E2E tests
+yarn e2e
+```
+
+## Plugin examples in Grafana
+
+### Built-in panel plugins
+
+Located in `public/app/plugins/panel/`:
+- `timeseries/` - Time series graph
+- `table/` - Table visualization
+- `stat/` - Single stat display
+- `gauge/` - Gauge visualization
+
+### Built-in data source plugins
+
+Located in `pkg/tsdb/` (backend) and `public/app/plugins/datasource/` (frontend):
+
+```
+pkg/tsdb/prometheus/          # Prometheus backend
+public/app/plugins/datasource/prometheus/  # Prometheus frontend
+```
+
+Example: `pkg/tsdb/prometheus/`:
+
+```go
+type Service struct {
+    im instancemgmt.InstanceManager
+}
+
+func (s *Service) QueryData(ctx context.Context, req *backend.QueryDataRequest) (*backend.QueryDataResponse, error) {
+    // Execute Prometheus queries
+}
+```
+
+## Plugin extensions
+
+Plugins can extend Grafana UI:
+
+```json
+// plugin.json
+{
+  "extensions": {
+    "addedLinks": [
+      {
+        "targets": ["grafana/dashboard/panel/menu"],
+        "title": "Export to MyService",
+        "description": "Export panel data",
+        "configure": "exportConfigure"
+      }
+    ],
+    "addedComponents": [
+      {
+        "targets": ["grafana/dashboard/toolbar"],
+        "title": "My Button",
+        "component": "MyButton"
+      }
+    ]
+  }
+}
+```
+
+Implement in plugin:
+
+```typescript
+export const plugin = new AppPlugin()
+  .exposeComponent({
+    id: 'MyButton',
+    title: 'My Button',
+    description: 'Custom toolbar button',
+    component: MyButtonComponent,
+  });
+```
+
+## Key patterns summary
+
+- **Frontend plugins** - React components with Grafana SDK
+- **Backend plugins** - Go processes with gRPC communication
+- **Plugin.json** - Metadata and configuration
+- **Discovery pipeline** - Automatic plugin loading
+- **Signature validation** - Security through signing
+- **Extensions** - UI extensibility points
+- **Resource handlers** - Custom API endpoints
+
+## Related documentation
+
+- [Backend architecture](./backend.mdx)
+- [Frontend architecture](./frontend.mdx)
+- [Plugin development guide](/developers/plugins/)

@@ -1,0 +1,536 @@
+---
+title: Contact Points
+description: Configure notification destinations for Grafana alerts
+---
+
+Contact points define where alert notifications are sent. They represent integrations with external systems like email, Slack, PagerDuty, and many others.
+
+## Contact Point Structure
+
+A contact point can contain multiple integrations (receivers) that share the same name:
+
+<CodeGroup>
+
+```typescript Contact Point
+interface EmbeddedContactPoint {
+  uid: string;              // Unique identifier
+  name: string;             // Contact point name (shared across integrations)
+  type: NotifierType;       // Integration type
+  settings: object;         // Type-specific configuration
+  disableResolveMessage: boolean;
+  provenance?: string;      // 'file' | 'api' | undefined
+}
+```
+
+```typescript Notifier Types
+type GrafanaNotifierType =
+  | 'email'
+  | 'slack'
+  | 'pagerduty'
+  | 'webhook'
+  | 'discord'
+  | 'teams'
+  | 'opsgenie'
+  | 'telegram'
+  | 'victorops'
+  | 'pushover'
+  | 'sensugo'
+  | 'googlechat'
+  | 'threema'
+  | 'prometheus-alertmanager'
+  | 'dingding'
+  | 'kafka'
+  | 'wecom'
+  | 'webex'
+  | 'mqtt'
+  | 'oncall'
+  | 'sns';
+```
+
+</CodeGroup>
+
+## Integration Configuration
+
+### Email
+
+```json
+{
+  "uid": "email-1",
+  "name": "ops-team",
+  "type": "email",
+  "settings": {
+    "addresses": "ops@example.com,alerts@example.com",
+    "singleEmail": false
+  },
+  "disableResolveMessage": false
+}
+```
+
+<ParamField path="settings.addresses" type="string" required>
+  Comma-separated list of email addresses
+</ParamField>
+
+<ParamField path="settings.singleEmail" type="boolean" default="false">
+  Send a single email with all alerts (true) or separate emails (false)
+</ParamField>
+
+### Slack
+
+```json
+{
+  "uid": "slack-1",
+  "name": "engineering",
+  "type": "slack",
+  "settings": {
+    "url": "https://hooks.slack.com/services/T00000000/B00000000/XXXXXXXXXXXXXXXXXXXX",
+    "recipient": "#alerts",
+    "username": "Grafana",
+    "icon_emoji": ":bell:",
+    "icon_url": "",
+    "mentionChannel": "here",
+    "mentionUsers": "",
+    "mentionGroups": "",
+    "title": "{{ .CommonLabels.alertname }}",
+    "text": "{{ range .Alerts }}{{ .Annotations.description }}{{ end }}"
+  },
+  "disableResolveMessage": false
+}
+```
+
+<ParamField path="settings.url" type="string" required>
+  Slack webhook URL (incoming webhook)
+</ParamField>
+
+<ParamField path="settings.recipient" type="string">
+  Channel name (e.g., `#alerts`) or user (e.g., `@username`)
+</ParamField>
+
+<ParamField path="settings.mentionChannel" type="string">
+  Mention channel: `here`, `channel`, or empty
+</ParamField>
+
+<ParamField path="settings.mentionUsers" type="string">
+  Comma-separated user IDs to mention
+</ParamField>
+
+### PagerDuty
+
+```json
+{
+  "uid": "pd-1",
+  "name": "oncall",
+  "type": "pagerduty",
+  "settings": {
+    "integrationKey": "${PAGERDUTY_KEY}",
+    "severity": "critical",
+    "class": "grafana-alert",
+    "component": "monitoring",
+    "group": "infrastructure",
+    "summary": "{{ .CommonLabels.alertname }}"
+  },
+  "secureFields": {
+    "integrationKey": true
+  },
+  "disableResolveMessage": false
+}
+```
+
+<ParamField path="settings.integrationKey" type="string" required>
+  PagerDuty integration key (stored securely)
+</ParamField>
+
+<ParamField path="settings.severity" type="string">
+  Severity level: `critical`, `error`, `warning`, `info`
+</ParamField>
+
+### Webhook
+
+```json
+{
+  "uid": "webhook-1",
+  "name": "custom-system",
+  "type": "webhook",
+  "settings": {
+    "url": "https://example.com/webhook",
+    "httpMethod": "POST",
+    "username": "",
+    "password": "",
+    "authorization_scheme": "Bearer",
+    "authorization_credentials": "${API_TOKEN}",
+    "maxAlerts": 0,
+    "title": "{{ .CommonLabels.alertname }}",
+    "message": "{{ .CommonAnnotations.summary }}"
+  },
+  "disableResolveMessage": false
+}
+```
+
+<ParamField path="settings.url" type="string" required>
+  Webhook endpoint URL
+</ParamField>
+
+<ParamField path="settings.httpMethod" type="string" default="POST">
+  HTTP method: `POST`, `PUT`
+</ParamField>
+
+<ParamField path="settings.authorization_scheme" type="string">
+  Authorization scheme: `Bearer`, `Basic`, or custom
+</ParamField>
+
+### Microsoft Teams
+
+```json
+{
+  "uid": "teams-1",
+  "name": "devops",
+  "type": "teams",
+  "settings": {
+    "url": "https://outlook.office.com/webhook/...",
+    "title": "{{ .CommonLabels.alertname }}",
+    "message": "{{ range .Alerts }}{{ .Annotations.description }}{{ end }}",
+    "sectiontitle": "Alert Details"
+  },
+  "disableResolveMessage": false
+}
+```
+
+### Discord
+
+```json
+{
+  "uid": "discord-1",
+  "name": "monitoring",
+  "type": "discord",
+  "settings": {
+    "url": "https://discord.com/api/webhooks/...",
+    "avatar_url": "",
+    "use_discord_username": false,
+    "message": "{{ .CommonAnnotations.summary }}",
+    "title": "{{ .CommonLabels.alertname }}"
+  },
+  "disableResolveMessage": false
+}
+```
+
+## Secure Fields
+
+Sensitive data (API keys, passwords) are stored securely:
+
+```json
+{
+  "uid": "slack-1",
+  "name": "team",
+  "type": "slack",
+  "settings": {
+    "url": "${SLACK_WEBHOOK_URL}",  // Reference to secure storage
+    "recipient": "#alerts"
+  },
+  "secureFields": {
+    "url": true  // Indicates this field is encrypted
+  }
+}
+```
+
+<Warning>
+Secure fields:
+- Are encrypted at rest
+- Cannot be read via API (only written)
+- Use `${VAR_NAME}` syntax in provisioning
+- Show as `true` in `secureFields` when set
+</Warning>
+
+## Notification Options
+
+### Disable Resolve Messages
+
+```json
+{
+  "disableResolveMessage": true
+}
+```
+
+When `true`, only firing alerts are sent. Resolution notifications are suppressed.
+
+### Notification Templates
+
+Use Go templates to customize notification content:
+
+<CodeGroup>
+
+```go Common Variables
+// Available in all templates
+{{ .Status }}              // firing or resolved
+{{ .CommonLabels }}        // Labels common to all alerts
+{{ .CommonAnnotations }}   // Annotations common to all alerts
+{{ .GroupLabels }}         // Labels used for grouping
+{{ .ExternalURL }}         // Link to Grafana
+{{ .Alerts }}              // List of all alerts
+{{ .Alerts.Firing }}       // List of firing alerts
+{{ .Alerts.Resolved }}     // List of resolved alerts
+```
+
+```go Alert Variables
+// Available in {{ range .Alerts }}
+{{ .Status }}              // Alert status
+{{ .Labels }}              // All labels
+{{ .Labels.alertname }}    // Specific label
+{{ .Annotations }}         // All annotations
+{{ .StartsAt }}            // When alert started
+{{ .EndsAt }}              // When alert ended
+{{ .GeneratorURL }}        // Link to panel/rule
+{{ .Fingerprint }}         // Unique identifier
+```
+
+```go Template Examples
+// Title with alert name
+"title": "{{ .CommonLabels.alertname }}"
+
+// Summary with count
+"summary": "{{ len .Alerts.Firing }} alerts firing"
+
+// List all alerts
+"message": "{{ range .Alerts }}
+  Alert: {{ .Labels.alertname }}
+  {{ .Annotations.description }}
+{{ end }}"
+
+// Conditional logic
+{{ if gt (len .Alerts.Firing) 0 }}
+  Firing: {{ len .Alerts.Firing }}
+{{ end }}
+```
+
+</CodeGroup>
+
+## Contact Point Metadata
+
+<CodeGroup>
+
+```typescript With Status
+interface ContactPointWithMetadata {
+  name: string;
+  integrations: Integration[];
+  
+  // Metadata
+  numberOfPolicies: number;    // How many policies use this
+  receiverStatus?: {           // Delivery status
+    active: boolean;
+    errorCount: number;
+    notifiers: NotifierStatus[];
+  };
+}
+```
+
+```typescript Notifier Status
+interface NotifierStatus {
+  name: string;
+  lastNotifyAttempt: string;
+  lastNotifyAttemptDuration: string;
+  lastNotifyAttemptError?: string;
+  sendResolved?: boolean;
+}
+```
+
+</CodeGroup>
+
+## Provisioning Contact Points
+
+<CodeGroup>
+
+```yaml Provisioning File
+# conf/provisioning/alerting/contactpoints.yaml
+apiVersion: 1
+
+contactPoints:
+  - orgId: 1
+    name: ops-team
+    receivers:
+      - uid: email-ops
+        type: email
+        settings:
+          addresses: ops@example.com
+        disableResolveMessage: false
+      
+      - uid: slack-ops
+        type: slack
+        settings:
+          url: ${SLACK_WEBHOOK}
+          recipient: '#ops'
+          title: '{{ .CommonLabels.alertname }}'
+        disableResolveMessage: false
+```
+
+```go Provisioning Model
+// Location: pkg/services/provisioning/alerting/contact_point_types.go
+type ContactPointV1 struct {
+    OrgID     int64
+    Name      string
+    Receivers []ReceiverV1
+}
+
+type ReceiverV1 struct {
+    UID                   string
+    Type                  string
+    Settings              map[string]interface{}
+    DisableResolveMessage bool
+}
+```
+
+</CodeGroup>
+
+## Backend Components
+
+<CodeGroup>
+
+```go Contact Point Definition
+// Location: pkg/services/ngalert/api/tooling/definitions
+type EmbeddedContactPoint struct {
+    UID                   string
+    Name                  string
+    Type                  string
+    DisableResolveMessage bool
+    Settings              *simplejson.Json
+    Provenance            string
+}
+```
+
+```go Receiver Configuration
+type Receiver struct {
+    Name                    string
+    EmailConfigs            []*EmailConfig
+    PagerdutyConfigs        []*PagerdutyConfig
+    SlackConfigs            []*SlackConfig
+    WebhookConfigs          []*WebhookConfig
+    OpsGenieConfigs         []*OpsGenieConfig
+    // ... other integration types
+}
+```
+
+</CodeGroup>
+
+## Validation
+
+Contact points are validated before being saved:
+
+<Steps>
+  <Step title="Type Validation">
+    Integration type must be supported
+  </Step>
+  
+  <Step title="Settings Validation">
+    Required settings for the integration type must be provided
+  </Step>
+  
+  <Step title="Name Validation">
+    Name must be unique within the organization
+  </Step>
+  
+  <Step title="Template Validation">
+    Notification templates must be valid Go templates
+  </Step>
+  
+  <Step title="URL Validation">
+    Webhook URLs and other URLs must be valid
+  </Step>
+</Steps>
+
+## Testing Contact Points
+
+Grafana provides a test feature to verify configuration:
+
+```typescript
+POST /api/alertmanager/grafana/config/api/v1/receivers/test
+
+Body:
+{
+  "name": "test-receiver",
+  "grafana_managed_receiver_configs": [
+    {
+      "uid": "test-1",
+      "name": "test-receiver",
+      "type": "slack",
+      "settings": {
+        "url": "https://hooks.slack.com/services/...",
+        "recipient": "#test"
+      }
+    }
+  ],
+  "alert": {
+    "labels": { "alertname": "TestAlert" },
+    "annotations": { "description": "This is a test" }
+  }
+}
+```
+
+## Best Practices
+
+<AccordionGroup>
+  <Accordion title="Use meaningful names">
+    Name contact points after the team or purpose (e.g., `backend-team`, `critical-alerts`, `ops-pagerduty`).
+  </Accordion>
+  
+  <Accordion title="Group related integrations">
+    Use multiple integrations in one contact point for notifications that should go to multiple places together.
+  </Accordion>
+  
+  <Accordion title="Customize notification content">
+    Use templates to make notifications informative and actionable. Include:
+    - Alert name and severity
+    - Relevant metric values
+    - Runbook links
+    - Dashboard links
+  </Accordion>
+  
+  <Accordion title="Test before deploying">
+    Always test contact points before using them in production notification policies.
+  </Accordion>
+  
+  <Accordion title="Secure sensitive data">
+    Use secure fields for API keys, tokens, and passwords. Never commit secrets to version control.
+  </Accordion>
+  
+  <Accordion title="Handle resolve messages appropriately">
+    Only disable resolve messages if the integration doesn't support them or they're not useful.
+  </Accordion>
+</AccordionGroup>
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="Notifications not being sent">
+    - Check notification policy routes to this contact point
+    - Verify integration credentials are correct
+    - Check contact point status for errors
+    - Review alertmanager logs
+  </Accordion>
+  
+  <Accordion title="Template errors">
+    - Validate Go template syntax
+    - Check that referenced labels/annotations exist
+    - Test with the contact point test feature
+  </Accordion>
+  
+  <Accordion title="Integration-specific issues">
+    - Slack: Verify webhook URL and channel name
+    - Email: Check SMTP configuration in grafana.ini
+    - PagerDuty: Confirm integration key is correct
+    - Webhook: Check endpoint is accessible and accepts POST
+  </Accordion>
+</AccordionGroup>
+
+## Related Resources
+
+<CardGroup cols={2}>
+  <Card title="Notification Policies" icon="route" href="./notification-channels">
+    Route alerts to contact points
+  </Card>
+  <Card title="Alert Rules" icon="bell" href="./alert-rules">
+    Create rules that generate alerts
+  </Card>
+  <Card title="Notification Templates" icon="file-code" href="./contact-points#notification-templates">
+    Customize notification content
+  </Card>
+  <Card title="Overview" icon="book" href="./overview">
+    Understand the alerting architecture
+  </Card>
+</CardGroup>

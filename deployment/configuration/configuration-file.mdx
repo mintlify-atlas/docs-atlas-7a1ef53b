@@ -1,0 +1,415 @@
+---
+title: Configuration File
+description: Configure Grafana using INI-formatted configuration files
+---
+
+Grafana uses INI-formatted configuration files to define settings. The configuration system provides sensible defaults and allows you to override only the settings you need to change.
+
+## Configuration Files
+
+### defaults.ini
+
+Location: `conf/defaults.ini`
+
+This file contains all default Grafana settings with documentation. **Do not modify this file** as it will be overwritten during upgrades.
+
+```ini
+##################### Grafana Configuration Defaults #####################
+#
+# Do not modify this file in grafana installs
+#
+
+# possible values : production, development
+app_mode = production
+
+# instance name, defaults to HOSTNAME environment variable value or hostname if HOSTNAME var is empty
+instance_name = ${HOSTNAME}
+```
+
+### custom.ini
+
+Location: `conf/custom.ini`
+
+This is your custom configuration file where you override default settings. This file is preserved during upgrades.
+
+```ini
+# Example custom.ini
+[server]
+http_port = 3000
+protocol = http
+domain = example.com
+root_url = https://grafana.example.com/
+
+[database]
+type = postgres
+host = db.example.com:5432
+name = grafana
+user = grafana_user
+password = """myp@ssw0rd#with;special"""  # Triple quotes for special characters
+
+[security]
+admin_user = admin
+admin_password = changeme
+```
+
+### Custom Configuration Path
+
+You can specify a custom configuration file path using the `--config` flag:
+
+```bash
+grafana-server --config=/etc/grafana/custom.ini
+```
+
+## INI File Format
+
+### Sections
+
+Configuration is organized into sections denoted by `[section_name]`:
+
+```ini
+[server]
+http_port = 3000
+
+[database]
+type = sqlite3
+
+[security]
+secret_key = SW2YcwTIb9zpOOhoPsMm
+```
+
+### Nested Sections
+
+Some configuration uses nested sections with dot notation:
+
+```ini
+[auth.github]
+enabled = true
+client_id = some_id
+client_secret = some_secret
+
+[auth.google]
+enabled = false
+client_id = some_client_id
+```
+
+### Comments
+
+Comments start with `#` or `;`:
+
+```ini
+# This is a comment
+; This is also a comment
+http_port = 3000  # Inline comment
+```
+
+### Value Types
+
+**Strings:**
+```ini
+domain = localhost
+instance_name = my-grafana
+```
+
+**Numbers:**
+```ini
+http_port = 3000
+max_idle_conn = 2
+```
+
+**Booleans:**
+```ini
+enabled = true
+log_queries = false
+```
+
+**Durations:**
+```ini
+temp_data_lifetime = 24h
+read_timeout = 30s
+login_maximum_lifetime_duration = 30d
+```
+
+Supported units: `ms` (milliseconds), `s` (seconds), `m` (minutes), `h` (hours), `d` (days), `w` (weeks), `M` (months)
+
+**Special Characters in Values:**
+
+If your value contains `#` or `;`, wrap it with triple quotes:
+
+```ini
+password = """#password;with;special""" 
+connection_string = """server=localhost;database=grafana;user=admin;password=p@ss;word"""
+```
+
+### Variable Substitution
+
+Grafana supports variable substitution using the `${VAR}` syntax:
+
+```ini
+instance_name = ${HOSTNAME}
+root_url = %(protocol)s://%(domain)s:%(http_port)s/
+```
+
+The `%(key)s` syntax references other values within the same section.
+
+## Key Configuration Sections
+
+### Server Configuration
+
+```ini
+[server]
+# Protocol (http, https, h2, socket, socket_h2)
+protocol = http
+
+# The ip address to bind to, empty will bind to all interfaces
+http_addr = 0.0.0.0
+
+# The http port to use
+http_port = 3000
+
+# The public facing domain name used to access grafana from a browser
+domain = localhost
+
+# The full public facing url
+root_url = %(protocol)s://%(domain)s:%(http_port)s/
+
+# Serve Grafana from subpath
+serve_from_sub_path = false
+
+# enable gzip
+enable_gzip = false
+
+# https certs & key file
+cert_file =
+cert_key =
+
+# Minimum TLS version (TLS1.2, TLS1.3)
+min_tls_version = TLS1.2
+```
+
+### Paths Configuration
+
+```ini
+[paths]
+# Path to where grafana can store temp files, sessions, and the sqlite3 db
+data = data
+
+# Temporary files lifetime
+temp_data_lifetime = 24h
+
+# Directory where grafana can store logs
+logs = data/log
+
+# Directory where grafana will automatically scan and look for plugins
+plugins = data/plugins
+
+# Folder for provisioning config files
+provisioning = conf/provisioning
+```
+
+### Security Configuration
+
+```ini
+[security]
+# Default admin user, created on startup
+admin_user = admin
+
+# Default admin password, can be changed before first start
+admin_password = admin
+
+# Default admin email
+admin_email = admin@localhost
+
+# Secret key used for signing
+secret_key = SW2YcwTIb9zpOOhoPsMm
+
+# Disable creation of admin user on first start
+disable_initial_admin_creation = false
+
+# Disable gravatar profile images
+disable_gravatar = false
+
+# Set to true if you host Grafana behind HTTPS
+cookie_secure = false
+
+# Set cookie SameSite attribute (lax, strict, none, disabled)
+cookie_samesite = lax
+
+# Set to true to allow browsers to render Grafana in a frame
+allow_embedding = false
+```
+
+### Logging Configuration
+
+```ini
+[log]
+# Either "console", "file", "syslog". Use space to separate multiple modes
+mode = console file
+
+# Either "debug", "info", "warn", "error"
+level = info
+
+# Optional settings to set different levels for specific loggers
+# Ex: filters = sqlstore:debug
+filters =
+
+[log.console]
+level =
+# log line format: text, console, json
+format = console
+
+[log.file]
+level =
+format = text
+log_rotate = true
+max_lines = 1000000
+max_size_shift = 28
+daily_rotate = true
+max_days = 7
+```
+
+### Users Configuration
+
+```ini
+[users]
+# Disable user signup / registration
+allow_sign_up = false
+
+# Allow non admin users to create organizations
+allow_org_create = false
+
+# Set to true to automatically assign new users to default organization
+auto_assign_org = true
+
+# Default organization (id 1)
+auto_assign_org_id = 1
+
+# Default role new users will be assigned (Viewer, Editor, Admin)
+auto_assign_org_role = Viewer
+
+# Require email validation before sign up completes
+verify_email_enabled = false
+
+# Default UI theme (dark, light, system)
+default_theme = dark
+
+# Default UI language (en-US, fr-FR, etc.)
+default_language = en-US
+```
+
+## Configuration Validation
+
+Grafana validates configuration on startup. Common validation errors:
+
+**Invalid INI syntax:**
+```
+Failed to parse configuration: unclosed section
+```
+
+**Invalid value type:**
+```
+Failed to parse http_port: strconv.ParseInt: invalid syntax
+```
+
+**Missing required value:**
+```
+Database host is required when type is postgres
+```
+
+Check the Grafana logs at startup for configuration errors.
+
+## Reloading Configuration
+
+Most configuration changes require a Grafana restart:
+
+```bash
+# Systemd
+sudo systemctl restart grafana-server
+
+# Init.d
+sudo service grafana-server restart
+
+# Docker
+docker restart grafana
+```
+
+Some settings (like provisioning) are reloaded automatically without restart.
+
+## Best Practices
+
+1. **Start with defaults.ini** - Review default settings before customizing
+2. **Use comments** - Document why you changed a setting
+3. **Group related settings** - Keep related configuration together
+4. **Avoid duplicates** - Only specify each setting once
+5. **Quote special characters** - Use triple quotes for passwords with special chars
+6. **Version control custom.ini** - Track configuration changes (excluding secrets)
+7. **Use environment variables for secrets** - Keep sensitive data out of config files
+
+## Example Complete Configuration
+
+```ini
+# conf/custom.ini - Production Grafana Configuration
+
+[server]
+protocol = https
+http_port = 3000
+domain = grafana.example.com
+root_url = https://grafana.example.com/
+cert_file = /etc/grafana/ssl/grafana.crt
+cert_key = /etc/grafana/ssl/grafana.key
+enable_gzip = true
+
+[database]
+type = postgres
+host = postgres.example.com:5432
+name = grafana_prod
+user = grafana
+# Password set via GF_DATABASE_PASSWORD environment variable
+ssl_mode = require
+max_open_conn = 100
+max_idle_conn = 50
+conn_max_lifetime = 14400
+
+[security]
+# Admin credentials set via environment variables
+secret_key = ${SECRET_KEY}
+cookie_secure = true
+cookie_samesite = strict
+strict_transport_security = true
+strict_transport_security_max_age_seconds = 86400
+
+[users]
+allow_sign_up = false
+auto_assign_org = true
+auto_assign_org_role = Viewer
+default_theme = dark
+
+[auth.github]
+enabled = true
+allow_sign_up = true
+client_id = ${GITHUB_CLIENT_ID}
+client_secret = ${GITHUB_CLIENT_SECRET}
+scopes = user:email,read:org
+auth_url = https://github.com/login/oauth/authorize
+token_url = https://github.com/login/oauth/access_token
+api_url = https://api.github.com/user
+allowed_organizations = my-org
+
+[smtp]
+enabled = true
+host = smtp.example.com:587
+user = grafana@example.com
+# Password set via GF_SMTP_PASSWORD environment variable
+from_address = grafana@example.com
+from_name = Grafana
+skip_verify = false
+startTLS_policy = MandatoryStartTLS
+
+[log]
+mode = console file
+level = info
+
+[log.file]
+format = json
+log_rotate = true
+max_days = 30
+```

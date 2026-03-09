@@ -1,0 +1,555 @@
+---
+title: Querying Logs
+description: Learn how to query, filter, and analyze log data in Grafana Explore
+---
+
+# Querying Logs in Explore
+
+Explore provides a comprehensive interface for investigating log data from sources like Loki, Elasticsearch, CloudWatch Logs, and other log aggregation systems. The logs view is optimized for rapid filtering, searching, and contextual analysis.
+
+## Logs Visualization
+
+The logs panel in Explore displays log entries with several key features:
+
+- **Timestamp** - When the log entry was recorded
+- **Log level** - Color-coded severity (error, warning, info, debug, trace)
+- **Log message** - The actual log content
+- **Labels/fields** - Structured metadata attached to each log line
+- **Detected fields** - Automatically parsed fields from log content
+
+<Info>
+Logs are displayed in reverse chronological order by default (newest first), but you can change the sort order using the sort dropdown.
+</Info>
+
+## Loki Log Queries
+
+Loki is Grafana's native log aggregation system. It uses LogQL, a query language designed specifically for logs.
+
+### Basic LogQL Queries
+
+#### Stream Selection
+
+Select log streams using label matchers:
+
+```logql
+{job="varlogs"}
+```
+
+This returns all logs from the `varlogs` job.
+
+#### Multiple Label Filters
+
+Combine multiple label filters:
+
+```logql
+{job="varlogs", env="production", namespace="default"}
+```
+
+All labels must match (AND logic).
+
+#### Label Matching Operators
+
+```logql
+# Exact match
+{job="varlogs"}
+
+# Negative match
+{job!="varlogs"}
+
+# Regex match
+{job=~".*varlogs.*"}
+
+# Negative regex
+{job!~".*test.*"}
+```
+
+### Log Pipeline Operations
+
+LogQL pipelines transform and filter log lines after stream selection:
+
+#### Line Filtering
+
+Filter logs containing specific text:
+
+```logql
+{job="varlogs"} |= "error"
+```
+
+Operators:
+- `|=` - Contains string
+- `!=` - Does not contain string  
+- `|~` - Matches regex
+- `!~` - Does not match regex
+
+#### Chained Filters
+
+Combine multiple filters:
+
+```logql
+{job="varlogs"} 
+  |= "error" 
+  != "timeout" 
+  |~ "database|connection"
+```
+
+#### Parser Operations
+
+Extract fields from log lines:
+
+```logql
+# JSON parsing
+{job="varlogs"} | json
+
+# Logfmt parsing  
+{job="varlogs"} | logfmt
+
+# Regex parsing
+{job="varlogs"} | regexp "(?P<method>\\w+) (?P<path>[\\w/]+)"
+
+# Pattern parsing
+{job="varlogs"} | pattern `<_> <level> <_> <msg>`
+```
+
+#### Label Filtering
+
+Filter on parsed labels:
+
+```logql
+{job="varlogs"} 
+  | json 
+  | level="error" 
+  | duration > 1s
+```
+
+#### Line Formatting
+
+Reformat log lines for display:
+
+```logql
+{job="varlogs"} 
+  | json 
+  | line_format "{{.level}} - {{.message}}"
+```
+
+### Metric Queries from Logs
+
+LogQL can aggregate logs into metrics:
+
+#### Count Over Time
+
+Count log lines per time interval:
+
+```logql
+count_over_time({job="varlogs"}[5m])
+```
+
+#### Rate
+
+Calculate logs per second:
+
+```logql
+rate({job="varlogs"} |= "error" [5m])
+```
+
+#### Aggregation Functions
+
+Aggregate across labels:
+
+```logql
+sum by (level) (
+  count_over_time({job="varlogs"}[5m])
+)
+```
+
+#### Extracted Values
+
+Aggregate parsed numeric fields:
+
+```logql
+avg_over_time(
+  {job="varlogs"} 
+    | json 
+    | unwrap duration [5m]
+)
+```
+
+This calculates the average `duration` field over 5-minute windows.
+
+## Query Builder
+
+The LogQL query builder helps construct queries visually:
+
+<Steps>
+  <Step title="Select labels">
+    Choose label filters from dropdowns. Available labels are auto-populated from your Loki instance.
+  </Step>
+  
+  <Step title="Add line filters">
+    Add text or regex filters to match specific log content.
+  </Step>
+  
+  <Step title="Parse fields">
+    Select a parser (JSON, logfmt, regex, pattern) to extract structured fields.
+  </Step>
+  
+  <Step title="Filter parsed labels">
+    Apply filters on the extracted fields.
+  </Step>
+  
+  <Step title="Switch to code">
+    Click **Code** to see the generated LogQL and make manual adjustments.
+  </Step>
+</Steps>
+
+<Tip>
+Start with the query builder when learning LogQL, then switch to code mode as you become more comfortable.
+</Tip>
+
+## Interactive Log Filtering
+
+Explore provides powerful interactive filtering directly from log lines:
+
+### Click to Filter
+
+1. **Hover over any label or field** in a log line
+2. Click the filter icon to show available actions:
+   - **Filter for value** - Show only logs with this value
+   - **Filter out value** - Hide logs with this value
+3. The query automatically updates with the new filter
+
+### Text Selection
+
+Select any text within a log message:
+
+1. Highlight text in the log content
+2. Right-click or use the popup menu
+3. Choose:
+   - **Line contains** - Add `|= "text"` filter
+   - **Line does not contain** - Add `!= "text"` filter
+
+<Info>
+Interactive filters are added to your query, making them visible and easy to modify or remove.
+</Info>
+
+## Log Context
+
+View surrounding log lines for any log entry:
+
+<Steps>
+  <Step title="Expand a log line">
+    Click on any log line to expand its details.
+  </Step>
+  
+  <Step title="Open context">
+    Click **Show context** to load log lines before and after this entry.
+  </Step>
+  
+  <Step title="Adjust range">
+    Use the controls to load more lines before or after.
+  </Step>
+  
+  <Step title="Navigate context">
+    Scroll through the context to understand what happened around this log.
+  </Step>
+</Steps>
+
+Context is essential for understanding the sequence of events leading to an issue.
+
+## Logs Volume
+
+The logs volume panel shows a histogram of log entries over time:
+
+- **Visual overview** - See spikes and patterns in log volume
+- **Color-coded by level** - Errors in red, warnings in yellow, info in blue
+- **Interactive selection** - Click a bar to filter to that time range
+- **Auto-updating** - Refreshes with your query results
+
+<Tip>
+Use logs volume to identify when issues started, then click that time period to focus your investigation.
+</Tip>
+
+## Deduplication
+
+Reduce noise from duplicate log lines:
+
+1. Click the **Dedup** dropdown in the logs panel
+2. Choose a strategy:
+   - **None** - Show all logs
+   - **Exact** - Hide exact duplicate lines
+   - **Numbers** - Hide lines that differ only in numbers
+   - **Signature** - Hide lines with similar patterns
+
+<Info>
+Deduplication is applied client-side after query results are returned, so it doesn't reduce query load.
+</Info>
+
+## Live Tail
+
+Stream logs in real-time as they're ingested:
+
+<Steps>
+  <Step title="Start live tail">
+    Click the **Live** button in the Explore toolbar.
+  </Step>
+  
+  <Step title="Watch logs stream">
+    New log lines appear at the top automatically.
+  </Step>
+  
+  <Step title="Pause to review">
+    Click **Pause** to freeze the stream while maintaining the connection.
+  </Step>
+  
+  <Step title="Resume or stop">
+    Click **Resume** to continue streaming, or **Stop** to exit live mode.
+  </Step>
+  
+  <Step title="Clear buffer">
+    Click **Clear** to remove all streamed logs from the view.
+  </Step>
+</Steps>
+
+<Warning>
+Live tail works best with focused queries. Broad queries may stream too many logs to review effectively.
+</Warning>
+
+## Log Details
+
+Click any log line to view detailed information:
+
+### Detected Fields
+
+Automatically parsed fields from the log content:
+- JSON object keys
+- Logfmt key-value pairs  
+- Common patterns (IP addresses, URLs, etc.)
+
+Each field shows:
+- Field name and value
+- Filter actions (filter for/out)
+- Copy value button
+- Statistics (for numeric fields)
+
+### Labels
+
+Structured metadata attached to the log stream:
+- Kubernetes labels
+- Service identifiers  
+- Environment tags
+- Custom labels from Loki configuration
+
+### Data Links
+
+Configured links to related data:
+- Trace IDs linking to distributed traces
+- Service names linking to metrics  
+- Custom correlations defined in Grafana
+
+Click any link to open the related data in a split pane.
+
+## Performance Optimization
+
+### Label Filter First
+
+Always start queries with specific label filters:
+
+```logql
+# Good - filters streams first
+{job="api", env="prod"} |= "error"
+
+# Bad - processes all logs
+{job=~".*"} |= "error" | json | level="error"
+```
+
+Label filters reduce the data scanned before line processing.
+
+### Limit Time Range
+
+<Warning>
+Querying large time ranges (> 1 day) can be slow and resource-intensive. Start with smaller ranges and expand as needed.
+</Warning>
+
+### Use Metric Queries for Aggregations
+
+For counting and aggregations, use metric queries instead of loading individual logs:
+
+```logql
+# Efficient - returns aggregated metric
+sum by (level) (count_over_time({job="api"}[1h]))
+
+# Inefficient - loads all logs then counts client-side  
+{job="api"}
+```
+
+### Limit Results
+
+Add a line limit for exploratory queries:
+
+```logql
+{job="api"} |= "error" | limit 100
+```
+
+## Advanced Techniques
+
+### Multi-Line Logs
+
+Handle logs that span multiple lines:
+
+```logql
+{job="api"} 
+  | regexp "(?s)(?P<log>ERROR.*?\n.*?\n.*?\n)"
+  | line_format "{{.log}}"
+```
+
+The `(?s)` flag enables `.` to match newlines.
+
+### JSON Filtering
+
+Query nested JSON fields:
+
+```logql
+{job="api"} 
+  | json 
+  | json error="response.error" 
+  | error != ""
+```
+
+### Pattern Extraction
+
+Extract structured data from unstructured logs:
+
+```logql
+{job="nginx"} 
+  | pattern `<_> - - <_> "<method> <path> <_>" <status> <size> <_>`
+  | status >= 400
+```
+
+### Time Formatting
+
+Format timestamps in log output:
+
+```logql
+{job="api"} 
+  | json 
+  | line_format `{{.timestamp | unixEpoch | date "2006-01-02 15:04:05"}} {{.message}}`
+```
+
+## Elasticsearch and Other Sources
+
+While this guide focuses on Loki, Explore supports other log sources:
+
+### Elasticsearch
+
+- Use Lucene query syntax
+- Access all indexed fields
+- Support for aggregations
+- Full-text search capabilities
+
+### CloudWatch Logs
+
+- Query using CloudWatch Logs Insights query language
+- Access AWS log groups and streams  
+- Filter by log patterns
+- Time-based filtering
+
+### Splunk
+
+- SPL (Splunk Processing Language) support
+- Access to Splunk indexes
+- Field extraction and transformation
+
+<Tip>
+Each data source has its own query language and capabilities. Refer to the specific data source documentation for query syntax.
+</Tip>
+
+## Exporting and Sharing
+
+### Share Query URL
+
+1. Build your query in Explore
+2. Click **Share** in the toolbar  
+3. Copy the URL containing your query and time range
+4. Share with team members
+
+### Download Logs
+
+Export log results:
+
+1. Run your query to load results
+2. Click the download icon in the logs panel
+3. Choose format (TXT or JSON)
+4. Logs export with all fields and metadata
+
+### Create Alert
+
+Convert log queries into alerts (with supported data sources):
+
+1. Build a metric query from logs
+2. Click **Create alert rule**
+3. Configure alert conditions and notifications
+
+## Best Practices
+
+<AccordionGroup>
+  <Accordion title="Start broad, then filter down">
+    - Begin with basic label filters to see overall log volume
+    - Use logs volume to identify time periods of interest  
+    - Add line filters and parsers to narrow results
+    - Leverage interactive filtering for rapid iteration
+  </Accordion>
+  
+  <Accordion title="Use consistent label names">
+    - Standardize labels across services (env, cluster, namespace)
+    - Use meaningful job names that identify the log source
+    - Document your labeling scheme for the team
+  </Accordion>
+  
+  <Accordion title="Structure your logs">
+    - Emit logs in JSON or logfmt for easier parsing
+    - Include contextual fields (trace_id, request_id, user_id)
+    - Use consistent field names across services
+    - Set appropriate log levels
+  </Accordion>
+  
+  <Accordion title="Combine with metrics and traces">
+    - Use split view to correlate logs with metrics
+    - Click trace IDs in logs to view distributed traces
+    - Set up data links to connect related data
+    - Enable exemplars in Prometheus to link metrics → traces → logs
+  </Accordion>
+</AccordionGroup>
+
+## Troubleshooting
+
+### No logs returned
+
+- Verify the time range includes log data
+- Check label filters match your log streams
+- Confirm logs are being ingested (check in Loki directly)
+- Try removing line filters to see if they're too restrictive
+
+### Query timeout
+
+- Reduce the time range
+- Add more specific label filters
+- Remove expensive regex operations
+- Consider if you need individual logs or can use metric aggregations
+
+### Parsing errors
+
+- Verify log format matches the parser (JSON logs need `| json`)
+- Check regex patterns for syntax errors
+- Use the query inspector to see raw log content
+- Test parsers on a small time range first
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Querying Metrics" icon="chart-line" href="./querying-metrics">
+    Learn how to query time-series metrics data
+  </Card>
+  
+  <Card title="Distributed Tracing" icon="diagram-project" href="./tracing">
+    Investigate distributed traces in Explore
+  </Card>
+</CardGroup>

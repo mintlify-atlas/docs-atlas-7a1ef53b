@@ -1,0 +1,185 @@
+---
+title: Data Sources Overview
+description: Learn about Grafana's data source plugins and how to connect to various databases and services
+---
+
+# Data Sources Overview
+
+Grafana supports querying and visualizing data from a wide range of data sources. Each data source plugin provides a query editor and configuration interface tailored to that specific database or service.
+
+## What is a Data Source?
+
+A data source is an external service that Grafana queries to retrieve time series data, logs, traces, or other metrics. Grafana acts as a visualization layer on top of your existing data infrastructure.
+
+<Note>
+Data sources are configured per organization in Grafana. Each data source configuration includes connection details, authentication, and query settings.
+</Note>
+
+## Built-in Data Sources
+
+Grafana includes support for many popular data sources out of the box:
+
+<CardGroup cols={2}>
+  <Card title="Prometheus" icon="chart-line" href="/datasources/prometheus">
+    Time series database with powerful query language (PromQL)
+  </Card>
+  <Card title="Loki" icon="list" href="/datasources/loki">
+    Log aggregation system with LogQL query language
+  </Card>
+  <Card title="Elasticsearch" icon="magnifying-glass" href="/datasources/elasticsearch">
+    Search and analytics engine for logs and metrics
+  </Card>
+  <Card title="InfluxDB" icon="database" href="/datasources/influxdb">
+    Time series database with SQL, InfluxQL, and Flux support
+  </Card>
+  <Card title="MySQL / PostgreSQL" icon="table" href="/datasources/mysql-postgres">
+    Relational databases for structured data queries
+  </Card>
+</CardGroup>
+
+## Common Features
+
+All data sources share common functionality:
+
+### Connection Settings
+
+- **URL**: The HTTP endpoint for the data source API
+- **Access Mode**: Proxy (server-side) or direct (browser)
+- **Authentication**: Basic auth, API keys, OAuth, etc.
+
+<Warning>
+Direct browser access is deprecated for most data sources due to CORS and security concerns. Use server proxy mode.
+</Warning>
+
+### Query Editor
+
+Each data source provides a custom query editor in the dashboard panel editor:
+
+- Visual query builder (for supported data sources)
+- Code/raw query editor
+- Query syntax validation and auto-completion
+- Query history and saved queries
+
+### Variables
+
+Data sources support template variables for dynamic dashboards:
+
+```promql
+rate(http_requests_total{instance="$instance"}[5m])
+```
+
+Variables can be populated from:
+- Label values from the data source
+- Custom query results
+- Time ranges and intervals
+
+## Adding a Data Source
+
+1. Navigate to **Configuration** > **Data Sources**
+2. Click **Add data source**
+3. Select your data source type
+4. Configure connection settings
+5. Click **Save & Test** to verify connectivity
+
+<Accordion title="Connection Testing">
+The "Save & Test" button performs a basic query to verify:
+- Network connectivity to the data source
+- Authentication credentials are valid
+- Required permissions are granted
+
+If the test fails, check your firewall rules, credentials, and data source URL.
+</Accordion>
+
+## Query Performance
+
+### Time Range
+
+All time series queries are scoped to the dashboard's time range. Use appropriate time ranges to balance detail and performance.
+
+### Resolution and Step
+
+Grafana calculates query resolution based on:
+- Panel width in pixels
+- Selected time range
+- Data source-specific step/interval settings
+
+### Max Data Points
+
+Limit the number of data points returned to prevent browser performance issues:
+
+```ts
+// Configured in panel settings
+maxDataPoints: 1000
+```
+
+## Authentication Methods
+
+<Tabs>
+  <Tab title="Basic Auth">
+    Username and password authentication. Credentials are encrypted in Grafana's database.
+    
+    ```yaml
+    basicAuth: true
+    basicAuthUser: "admin"
+    ```
+  </Tab>
+  <Tab title="API Key">
+    Token-based authentication. Store tokens in Grafana's secure JSON data.
+    
+    ```yaml
+    jsonData:
+      apiKeyAuth: true
+    secureJsonData:
+      apiKey: "your-api-key"
+    ```
+  </Tab>
+  <Tab title="OAuth">
+    Forward OAuth tokens from logged-in user to data source.
+    
+    ```yaml
+    jsonData:
+      oauthPassThru: true
+    ```
+  </Tab>
+</Tabs>
+
+## Data Source Provisioning
+
+You can provision data sources via YAML configuration files:
+
+```yaml
+apiVersion: 1
+
+datasources:
+  - name: Prometheus
+    type: prometheus
+    access: proxy
+    url: http://prometheus:9090
+    isDefault: true
+    jsonData:
+      timeInterval: "30s"
+```
+
+Place configuration files in:
+- `<GRAFANA_HOME>/conf/provisioning/datasources/`
+
+<Info>
+Provisioned data sources cannot be edited through the UI. Update the YAML file and restart Grafana to apply changes.
+</Info>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Prometheus" href="/datasources/prometheus">
+    Learn about PromQL queries and metric collection
+  </Card>
+  <Card title="Loki" href="/datasources/loki">
+    Query logs with LogQL expressions
+  </Card>
+  <Card title="Elasticsearch" href="/datasources/elasticsearch">
+    Build aggregation queries for logs and metrics
+  </Card>
+  <Card title="InfluxDB" href="/datasources/influxdb">
+    Use Flux, InfluxQL, or SQL to query time series data
+  </Card>
+</CardGroup>

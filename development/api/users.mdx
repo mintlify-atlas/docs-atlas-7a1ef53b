@@ -1,0 +1,390 @@
+---
+title: Users API
+description: Manage users and user profiles
+---
+
+# Users API
+
+The Users API provides endpoints for managing Grafana users and their profiles.
+
+## Get Current User
+
+Get profile information for the currently authenticated user.
+
+<CodeGroup>
+```bash cURL
+curl -X GET http://localhost:3000/api/user \
+  -u admin:admin
+```
+
+```json Response
+{
+  "id": 1,
+  "uid": "u000000001",
+  "email": "admin@localhost",
+  "name": "Admin",
+  "login": "admin",
+  "theme": "dark",
+  "orgId": 1,
+  "isGrafanaAdmin": true,
+  "isDisabled": false,
+  "isExternal": false,
+  "authLabels": [],
+  "updatedAt": "2021-06-01T12:00:00Z",
+  "createdAt": "2021-01-01T10:00:00Z",
+  "avatarUrl": "/avatar/abc123"
+}
+```
+</CodeGroup>
+
+<ResponseField name="id" type="integer">
+  User internal ID
+</ResponseField>
+
+<ResponseField name="uid" type="string">
+  User unique identifier
+</ResponseField>
+
+<ResponseField name="email" type="string">
+  User email address
+</ResponseField>
+
+<ResponseField name="login" type="string">
+  Username
+</ResponseField>
+
+<ResponseField name="name" type="string">
+  Display name
+</ResponseField>
+
+<ResponseField name="isGrafanaAdmin" type="boolean">
+  Whether user has Grafana admin privileges
+</ResponseField>
+
+## Get User by ID
+
+Retrieve user information by user ID.
+
+<CodeGroup>
+```bash cURL
+curl -X GET http://localhost:3000/api/users/1 \
+  -u admin:admin
+```
+
+```json Response
+{
+  "id": 1,
+  "uid": "u000000001",
+  "email": "admin@localhost",
+  "name": "Admin",
+  "login": "admin",
+  "theme": "dark",
+  "orgId": 1,
+  "isGrafanaAdmin": true,
+  "isDisabled": false
+}
+```
+</CodeGroup>
+
+<ParamField path="user_id" type="integer" required>
+  User ID
+</ParamField>
+
+## Get User by Login or Email
+
+Lookup a user by login name or email address.
+
+<CodeGroup>
+```bash cURL
+curl -X GET "http://localhost:3000/api/users/lookup?loginOrEmail=admin@localhost" \
+  -u admin:admin
+```
+
+```json Response
+{
+  "id": 1,
+  "uid": "u000000001",
+  "email": "admin@localhost",
+  "name": "Admin",
+  "login": "admin",
+  "theme": "dark",
+  "isGrafanaAdmin": true
+}
+```
+</CodeGroup>
+
+<ParamField query="loginOrEmail" type="string" required>
+  Username or email address to lookup
+</ParamField>
+
+## Update Current User
+
+Update the current user's profile.
+
+<CodeGroup>
+```bash cURL
+curl -X PUT http://localhost:3000/api/user \
+  -u admin:admin \
+  -H "Content-Type: application/json" \
+  -d '{
+    "email": "admin@example.com",
+    "name": "Administrator",
+    "login": "admin",
+    "theme": "light"
+  }'
+```
+
+```json Response
+{
+  "message": "User updated"
+}
+```
+</CodeGroup>
+
+<ParamField body="email" type="string">
+  Email address
+</ParamField>
+
+<ParamField body="name" type="string">
+  Display name
+</ParamField>
+
+<ParamField body="login" type="string">
+  Username
+</ParamField>
+
+<ParamField body="theme" type="string">
+  UI theme: "light" or "dark"
+</ParamField>
+
+## Update User
+
+Update a user by their ID (admin only).
+
+<CodeGroup>
+```bash cURL
+curl -X PUT http://localhost:3000/api/users/1 \
+  -u admin:admin \
+  -H "Content-Type: application/json" \
+  -d '{
+    "email": "user@example.com",
+    "name": "User Name",
+    "login": "username"
+  }'
+```
+
+```json Response
+{
+  "message": "User updated"
+}
+```
+</CodeGroup>
+
+<ParamField path="user_id" type="integer" required>
+  User ID
+</ParamField>
+
+## Change Password
+
+Change the current user's password.
+
+<CodeGroup>
+```bash cURL
+curl -X PUT http://localhost:3000/api/user/password \
+  -u admin:admin \
+  -H "Content-Type: application/json" \
+  -d '{
+    "oldPassword": "admin",
+    "newPassword": "newSecurePassword123",
+    "confirmNew": "newSecurePassword123"
+  }'
+```
+
+```json Response
+{
+  "message": "User password changed"
+}
+```
+</CodeGroup>
+
+<ParamField body="oldPassword" type="string" required>
+  Current password
+</ParamField>
+
+<ParamField body="newPassword" type="string" required>
+  New password
+</ParamField>
+
+<ParamField body="confirmNew" type="string" required>
+  Confirm new password
+</ParamField>
+
+## Get User Organizations
+
+Get all organizations for a specific user.
+
+<CodeGroup>
+```bash cURL
+curl -X GET http://localhost:3000/api/users/1/orgs \
+  -u admin:admin
+```
+
+```json Response
+[
+  {
+    "orgId": 1,
+    "name": "Main Org.",
+    "role": "Admin"
+  },
+  {
+    "orgId": 2,
+    "name": "Second Org.",
+    "role": "Editor"
+  }
+]
+```
+</CodeGroup>
+
+<ParamField path="user_id" type="integer" required>
+  User ID
+</ParamField>
+
+<ResponseField name="orgId" type="integer">
+  Organization ID
+</ResponseField>
+
+<ResponseField name="name" type="string">
+  Organization name
+</ResponseField>
+
+<ResponseField name="role" type="string">
+  User's role in the organization: "Admin", "Editor", or "Viewer"
+</ResponseField>
+
+## Get Current User Organizations
+
+Get organizations for the currently authenticated user.
+
+<CodeGroup>
+```bash cURL
+curl -X GET http://localhost:3000/api/user/orgs \
+  -u admin:admin
+```
+</CodeGroup>
+
+## Get User Teams
+
+Get all teams for a specific user.
+
+<CodeGroup>
+```bash cURL
+curl -X GET http://localhost:3000/api/users/1/teams \
+  -u admin:admin
+```
+
+```json Response
+[
+  {
+    "id": 1,
+    "orgId": 1,
+    "name": "Engineering",
+    "email": "engineering@example.com",
+    "memberCount": 5
+  }
+]
+```
+</CodeGroup>
+
+<ParamField path="user_id" type="integer" required>
+  User ID
+</ParamField>
+
+## Switch User Organization
+
+Switch the current user's active organization.
+
+<CodeGroup>
+```bash cURL
+curl -X POST http://localhost:3000/api/user/using/2 \
+  -u admin:admin
+```
+
+```json Response
+{
+  "message": "Active organization changed"
+}
+```
+</CodeGroup>
+
+<ParamField path="org_id" type="integer" required>
+  Organization ID to switch to
+</ParamField>
+
+## Search Users
+
+Search for users (deprecated - use search with paging instead).
+
+<CodeGroup>
+```bash cURL
+curl -X GET "http://localhost:3000/api/users?perpage=10&page=1" \
+  -u admin:admin
+```
+</CodeGroup>
+
+<ParamField query="perpage" type="integer" default="1000">
+  Number of users per page
+</ParamField>
+
+<ParamField query="page" type="integer" default="1">
+  Page number
+</ParamField>
+
+## Search Users with Paging
+
+Search for users with pagination support.
+
+<CodeGroup>
+```bash cURL
+curl -X GET "http://localhost:3000/api/users/search?perpage=10&page=1&query=admin" \
+  -u admin:admin
+```
+
+```json Response
+{
+  "totalCount": 1,
+  "users": [
+    {
+      "id": 1,
+      "uid": "u000000001",
+      "name": "Admin",
+      "login": "admin",
+      "email": "admin@localhost",
+      "isAdmin": true
+    }
+  ],
+  "page": 1,
+  "perPage": 10
+}
+```
+</CodeGroup>
+
+<ParamField query="query" type="string">
+  Search query (searches name, login, and email fields)
+</ParamField>
+
+<ParamField query="perpage" type="integer" default="1000">
+  Number of users per page
+</ParamField>
+
+<ParamField query="page" type="integer" default="1">
+  Page number
+</ParamField>
+
+## Permissions
+
+If you are running Grafana Enterprise with Fine-grained access control enabled:
+
+- **Read user**: Requires `users:read` permission
+- **Update user**: Requires `users:write` permission with scope `users:id:<id>`
+- **Create user**: Requires `users:create` permission
+- **Delete user**: Requires `users:delete` permission with scope `users:id:<id>`

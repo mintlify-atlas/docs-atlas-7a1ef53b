@@ -1,0 +1,552 @@
+---
+title: Database Configuration
+description: Configure Grafana's database backend for storing dashboards, users, and other persistent data
+---
+
+Grafana requires a database to store dashboards, users, organizations, data sources, and other metadata. This guide covers configuring the supported database backends.
+
+## Supported Databases
+
+Grafana supports three database backends:
+
+- **SQLite** - Default, embedded database (recommended for testing and small deployments)
+- **PostgreSQL** - Recommended for production deployments
+- **MySQL/MariaDB** - Supported for production deployments
+
+## SQLite Configuration
+
+SQLite is the default database and requires no external database server.
+
+### Configuration File
+
+```ini
+[database]
+# Database type
+type = sqlite3
+
+# Database file path (relative to data_path)
+path = grafana.db
+
+# Cache mode: private or shared
+cache_mode = private
+
+# Enable Write-Ahead Logging (recommended for better concurrency)
+wal = false
+
+# Query retries on database lock
+query_retries = 0
+
+# Transaction retries on database lock
+transaction_retries = 5
+```
+
+### Environment Variables
+
+```bash
+export GF_DATABASE_TYPE=sqlite3
+export GF_DATABASE_PATH=grafana.db
+export GF_DATABASE_CACHE_MODE=private
+export GF_DATABASE_WAL=false
+```
+
+### Limitations
+
+- Not recommended for production high-availability setups
+- Limited concurrent write performance
+- Not suitable for multiple Grafana instances
+- Maximum database size depends on disk space
+
+### Use Cases
+
+- Development and testing
+- Single-server deployments
+- Low-traffic installations
+- Embedded or edge deployments
+
+## PostgreSQL Configuration
+
+PostgreSQL is the recommended database for production deployments.
+
+### Configuration File
+
+```ini
+[database]
+# Database type
+type = postgres
+
+# Database host and port
+host = 127.0.0.1:5432
+
+# Database name
+name = grafana
+
+# Database user
+user = grafana
+
+# Database password
+password = password
+
+# SSL mode: disable, require, verify-full
+ssl_mode = require
+
+# Enable SNI (Server Name Indication)
+ssl_sni = 1
+
+# SSL certificate paths
+ca_cert_path = /path/to/ca.pem
+client_key_path = /path/to/client-key.pem
+client_cert_path = /path/to/client-cert.pem
+server_cert_name = postgres.example.com
+
+# Connection pool settings
+max_idle_conn = 2
+max_open_conn = 100
+conn_max_lifetime = 14400
+
+# Enable query logging
+log_queries = false
+
+# High availability mode
+high_availability = true
+
+# Migration settings
+migration_locking = true
+locking_attempt_timeout_sec = 0
+```
+
+### Environment Variables
+
+```bash
+export GF_DATABASE_TYPE=postgres
+export GF_DATABASE_HOST=postgres.example.com:5432
+export GF_DATABASE_NAME=grafana
+export GF_DATABASE_USER=grafana
+export GF_DATABASE_PASSWORD=secretpassword
+export GF_DATABASE_SSL_MODE=require
+export GF_DATABASE_MAX_OPEN_CONN=100
+export GF_DATABASE_MAX_IDLE_CONN=50
+export GF_DATABASE_CONN_MAX_LIFETIME=14400
+```
+
+### Connection URL Format
+
+Alternatively, use a connection URL:
+
+```ini
+[database]
+url = postgres://user:password@host:5432/database?sslmode=require
+```
+
+```bash
+export GF_DATABASE_URL="postgres://grafana:password@postgres.example.com:5432/grafana?sslmode=require"
+```
+
+### SSL/TLS Configuration
+
+**Disable SSL (not recommended for production):**
+```ini
+ssl_mode = disable
+```
+
+**Require SSL:**
+```ini
+ssl_mode = require
+```
+
+**Verify SSL certificate:**
+```ini
+ssl_mode = verify-full
+ca_cert_path = /etc/grafana/ssl/ca.pem
+client_cert_path = /etc/grafana/ssl/client-cert.pem
+client_key_path = /etc/grafana/ssl/client-key.pem
+```
+
+### PostgreSQL Setup
+
+Create the Grafana database and user:
+
+```sql
+-- Create user
+CREATE USER grafana WITH PASSWORD 'password';
+
+-- Create database
+CREATE DATABASE grafana WITH OWNER grafana ENCODING 'UTF8';
+
+-- Grant privileges
+GRANT ALL PRIVILEGES ON DATABASE grafana TO grafana;
+```
+
+For PostgreSQL 15+, you may need to grant schema permissions:
+
+```sql
+\c grafana
+GRANT ALL ON SCHEMA public TO grafana;
+```
+
+## MySQL/MariaDB Configuration
+
+MySQL and MariaDB are supported for production deployments.
+
+### Configuration File
+
+```ini
+[database]
+# Database type
+type = mysql
+
+# Database host and port
+host = 127.0.0.1:3306
+
+# Database name
+name = grafana
+
+# Database user
+user = grafana
+
+# Database password
+password = password
+
+# SSL mode: true, false, skip-verify
+ssl_mode = false
+
+# SSL certificate paths
+ca_cert_path = /path/to/ca.pem
+client_key_path = /path/to/client-key.pem
+client_cert_path = /path/to/client-cert.pem
+server_cert_name = mysql.example.com
+
+# Transaction isolation level
+# Options: READ-UNCOMMITTED, READ-COMMITTED, REPEATABLE-READ, SERIALIZABLE
+isolation_level = REPEATABLE-READ
+
+# Connection pool settings
+max_idle_conn = 2
+max_open_conn = 100
+conn_max_lifetime = 14400
+
+# Enable query logging
+log_queries = false
+
+# Migration settings
+migration_locking = true
+locking_attempt_timeout_sec = 0
+```
+
+### Environment Variables
+
+```bash
+export GF_DATABASE_TYPE=mysql
+export GF_DATABASE_HOST=mysql.example.com:3306
+export GF_DATABASE_NAME=grafana
+export GF_DATABASE_USER=grafana
+export GF_DATABASE_PASSWORD=secretpassword
+export GF_DATABASE_SSL_MODE=false
+export GF_DATABASE_MAX_OPEN_CONN=100
+export GF_DATABASE_MAX_IDLE_CONN=50
+```
+
+### Connection URL Format
+
+```ini
+[database]
+url = mysql://user:password@host:3306/database
+```
+
+```bash
+export GF_DATABASE_URL="mysql://grafana:password@mysql.example.com:3306/grafana"
+```
+
+### MySQL Setup
+
+Create the Grafana database and user:
+
+```sql
+-- Create database
+CREATE DATABASE grafana CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+
+-- Create user
+CREATE USER 'grafana'@'%' IDENTIFIED BY 'password';
+
+-- Grant privileges
+GRANT ALL PRIVILEGES ON grafana.* TO 'grafana'@'%';
+FLUSH PRIVILEGES;
+```
+
+### Character Set Requirements
+
+Grafana requires `utf8mb4` character set for MySQL:
+
+```sql
+ALTER DATABASE grafana CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+```
+
+## Advanced Configuration
+
+### Connection Pooling
+
+Optimize database connection pooling for your workload:
+
+```ini
+[database]
+# Maximum number of open connections to the database
+max_open_conn = 100
+
+# Maximum number of idle connections
+max_idle_conn = 50
+
+# Maximum connection lifetime in seconds (4 hours)
+conn_max_lifetime = 14400
+```
+
+Recommended values:
+- **Small deployments:** `max_open_conn = 10-20`, `max_idle_conn = 2-5`
+- **Medium deployments:** `max_open_conn = 50-100`, `max_idle_conn = 10-25`
+- **Large deployments:** `max_open_conn = 100-200`, `max_idle_conn = 25-50`
+
+### High Availability Mode
+
+For multi-instance Grafana deployments:
+
+```ini
+[database]
+high_availability = true
+```
+
+When `high_availability = false`, some features run in-process instead of using the database, which is only safe for single-instance deployments.
+
+### Query Logging
+
+Enable SQL query logging for debugging:
+
+```ini
+[database]
+log_queries = true
+```
+
+```bash
+export GF_DATABASE_LOG_QUERIES=true
+```
+
+### Migration Settings
+
+Control database migration behavior:
+
+```ini
+[database]
+# Lock database during migrations
+migration_locking = true
+
+# Migration lock timeout (seconds)
+locking_attempt_timeout_sec = 0
+
+# Skip all migrations on startup
+skip_migrations = false
+
+# Ensure default org and user on startup
+ensure_default_org_and_user = true
+```
+
+### Instrumentation and Metrics
+
+```ini
+[database]
+# Add metrics and tracing for database queries
+instrument_queries = false
+
+# Register deprecated database metrics
+register_deprecated_metrics = true
+```
+
+## Database Maintenance
+
+### Backup
+
+**PostgreSQL:**
+```bash
+pg_dump -h localhost -U grafana grafana > grafana_backup.sql
+```
+
+**MySQL:**
+```bash
+mysqldump -h localhost -u grafana -p grafana > grafana_backup.sql
+```
+
+**SQLite:**
+```bash
+sqlite3 /var/lib/grafana/grafana.db ".backup grafana_backup.db"
+# Or simply copy the file
+cp /var/lib/grafana/grafana.db grafana_backup.db
+```
+
+### Restore
+
+**PostgreSQL:**
+```bash
+psql -h localhost -U grafana grafana < grafana_backup.sql
+```
+
+**MySQL:**
+```bash
+mysql -h localhost -u grafana -p grafana < grafana_backup.sql
+```
+
+**SQLite:**
+```bash
+sqlite3 /var/lib/grafana/grafana.db ".restore grafana_backup.db"
+# Or copy the file back
+cp grafana_backup.db /var/lib/grafana/grafana.db
+```
+
+### Database Migration
+
+Migrating from SQLite to PostgreSQL/MySQL:
+
+1. Export dashboards and configuration
+2. Set up the new database
+3. Update Grafana configuration
+4. Restart Grafana (migrations run automatically)
+5. Re-import dashboards if needed
+
+For large databases, consider using migration tools or contact Grafana support.
+
+## Troubleshooting
+
+### Connection Issues
+
+**Check database connectivity:**
+```bash
+# PostgreSQL
+psql -h postgres.example.com -U grafana -d grafana
+
+# MySQL
+mysql -h mysql.example.com -u grafana -p grafana
+```
+
+**Common errors:**
+
+```
+failed to connect to database: connection refused
+```
+- Verify database host and port
+- Check firewall rules
+- Ensure database server is running
+
+```
+failed to connect to database: authentication failed
+```
+- Verify username and password
+- Check user permissions
+- Review database access controls
+
+```
+failed to connect to database: SSL required
+```
+- Enable SSL mode in configuration
+- Provide SSL certificates if using verify-full
+
+### Performance Issues
+
+**Too many connections:**
+```
+too many connections for database "grafana"
+```
+- Reduce `max_open_conn`
+- Increase database max connections limit
+- Check for connection leaks
+
+**Slow queries:**
+- Enable `log_queries` to identify slow queries
+- Optimize database indexes
+- Increase database resources (CPU, memory)
+- Review connection pool settings
+
+### Migration Failures
+
+**Migration lock timeout:**
+```
+failed to lock database for migration
+```
+- Increase `locking_attempt_timeout_sec`
+- Ensure no other Grafana instances are running migrations
+- Manually release database locks
+
+**Migration errors:**
+- Check Grafana logs for specific error messages
+- Verify database user has sufficient privileges
+- Ensure database version compatibility
+
+## Best Practices
+
+1. **Use PostgreSQL for production** - Better performance and reliability than MySQL/SQLite
+2. **Enable SSL/TLS** - Encrypt database connections in production
+3. **Regular backups** - Automate database backups and test restores
+4. **Monitor connections** - Track connection pool usage and adjust settings
+5. **Enable high availability mode** - Required for multi-instance deployments
+6. **Use connection pooling** - Configure appropriate pool sizes for your workload
+7. **Separate database server** - Don't run the database on the same host as Grafana in production
+8. **Use secrets management** - Store database credentials in environment variables or secret managers
+9. **Monitor database performance** - Track query performance and optimize as needed
+10. **Plan for growth** - Size your database server for expected data volume and user count
+
+## Example Configurations
+
+### Development (SQLite)
+
+```ini
+[database]
+type = sqlite3
+path = grafana.db
+wal = true
+```
+
+### Production (PostgreSQL with SSL)
+
+```ini
+[database]
+type = postgres
+host = postgres.example.com:5432
+name = grafana
+user = grafana
+# Password via environment variable
+ssl_mode = verify-full
+ca_cert_path = /etc/grafana/ssl/ca.pem
+client_cert_path = /etc/grafana/ssl/client-cert.pem
+client_key_path = /etc/grafana/ssl/client-key.pem
+max_open_conn = 100
+max_idle_conn = 50
+conn_max_lifetime = 14400
+high_availability = true
+migration_locking = true
+```
+
+### Docker Compose with PostgreSQL
+
+```yaml
+version: '3'
+services:
+  grafana:
+    image: grafana/grafana:latest
+    environment:
+      - GF_DATABASE_TYPE=postgres
+      - GF_DATABASE_HOST=postgres:5432
+      - GF_DATABASE_NAME=grafana
+      - GF_DATABASE_USER=grafana
+      - GF_DATABASE_PASSWORD=grafana
+      - GF_DATABASE_SSL_MODE=disable
+    depends_on:
+      - postgres
+    ports:
+      - "3000:3000"
+  
+  postgres:
+    image: postgres:15
+    environment:
+      - POSTGRES_DB=grafana
+      - POSTGRES_USER=grafana
+      - POSTGRES_PASSWORD=grafana
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+
+volumes:
+  postgres-data:
+```

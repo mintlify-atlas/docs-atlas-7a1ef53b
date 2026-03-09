@@ -1,0 +1,411 @@
+---
+title: Building
+description: Build and run Grafana for local development
+---
+
+Grafana consists of two components that can be built independently: the frontend (TypeScript/React) and the backend (Go).
+
+## Quick Start
+
+The fastest way to get started:
+
+<CodeGroup>
+```bash Backend with hot-reload
+make run
+```
+
+```bash Frontend dev server
+yarn start
+```
+</CodeGroup>
+
+Then visit `http://localhost:3000` (login: `admin` / `admin`).
+
+## Building the Backend
+
+The backend is a Go web server that serves the API and frontend assets.
+
+### Development Build with Hot-Reload
+
+<Steps>
+  <Step title="Start the backend with hot-reload">
+    ```bash
+    make run
+    ```
+
+    This:
+    - Builds the Go binary
+    - Starts the server on `localhost:3000`
+    - Watches for changes and automatically rebuilds
+    - Uses [Air](https://github.com/cosmtrek/air) for hot-reload (configured in `.air.toml`)
+
+    <Info>
+      First build takes ~3 minutes due to debug symbols. Subsequent hot-reload rebuilds are much faster.
+    </Info>
+  </Step>
+
+  <Step title="Log in to Grafana">
+    Visit `http://localhost:3000` and log in:
+
+    | Username | Password |
+    | -------- | -------- |
+    | `admin`  | `admin`  |
+
+    Grafana will prompt you to change the password on first login.
+  </Step>
+</Steps>
+
+### Production Build
+
+Build the backend without hot-reload:
+
+```bash
+make build-backend
+```
+
+The binary is created at `bin/grafana`.
+
+### Build Without Make
+
+If you prefer not to use Make:
+
+```bash
+go run -race ./pkg/cmd/grafana -- server -profile -profile-addr=127.0.0.1 -profile-port=6000 -packaging=dev cfg:app_mode=development
+```
+
+### CGO and Static Builds
+
+<Tabs>
+  <Tab title="Development (Default)">
+    `make run` and `make build-go` detect GCC and enable CGO automatically if available.
+
+    - **With CGO**: Uses SQLite for the embedded database
+    - **Without CGO**: No SQLite support
+  </Tab>
+
+  <Tab title="Production">
+    Production builds use `CGO_ENABLED=0` for fully static binaries:
+
+    ```bash
+    CGO_ENABLED=0 make build-go
+    ```
+
+    This is important when build and runtime environments differ (e.g., building on Debian, running on Alpine).
+  </Tab>
+</Tabs>
+
+### Windows-Specific Build Instructions
+
+<Steps>
+  <Step title="Install Wire tool">
+    Follow the [Wire installation instructions](https://github.com/google/wire#installing).
+  </Step>
+
+  <Step title="Generate Wire code">
+    ```bash
+    $GOPATH/bin/wire.exe gen -tags oss ./pkg/server ./pkg/cmd/grafana-cli/runner
+    ```
+  </Step>
+
+  <Step title="Build binaries">
+    ```bash
+    make build
+    ```
+
+    Binaries will be in `bin\windows-amd64`.
+  </Step>
+</Steps>
+
+<Info>
+  On Windows, you can use [Make for Windows](http://gnuwin32.sourceforge.net/packages/make.htm) in a UNIX shell like Git Bash.
+</Info>
+
+## Building the Frontend
+
+The frontend is built with webpack and served by the backend in development.
+
+### Development Build with Watch
+
+<Steps>
+  <Step title="Install dependencies (if not already done)">
+    ```bash
+    yarn install --immutable
+    ```
+  </Step>
+
+  <Step title="Start the webpack dev server">
+    ```bash
+    yarn start
+    ```
+
+    This:
+    - Generates SASS theme files
+    - Builds all external plugins
+    - Compiles frontend assets
+    - Watches for changes and rebuilds automatically
+    - Serves via webpack dev server (proxied by backend)
+
+    <Info>
+      First compile takes ~45 seconds. Subsequent rebuilds are incremental and faster.
+    </Info>
+  </Step>
+</Steps>
+
+### Production Build
+
+Build optimized frontend assets:
+
+```bash
+yarn build
+```
+
+Assets are output to `public/build/`.
+
+### Build Variations
+
+<CodeGroup>
+```bash Development (no minification)
+yarn dev
+```
+
+```bash Without minification
+yarn build:nominify
+```
+
+```bash With webpack stats
+yarn build:stats
+```
+
+```bash With live reload
+yarn start:liveReload
+```
+
+```bash Skip TypeScript checking (faster)
+yarn start:noTsCheck
+```
+
+```bash Skip TypeScript and linting (fastest)
+yarn start:noLint
+```
+</CodeGroup>
+
+### Troubleshooting Frontend Builds
+
+<AccordionGroup>
+  <Accordion title="Type-checking errors after git pull">
+    The incremental TypeScript build cache may be stale:
+
+    ```bash
+    rm tsconfig.tsbuildinfo
+    yarn start
+    ```
+  </Accordion>
+
+  <Accordion title="Checksum mismatch on yarn install">
+    Temporary mismatch for a dependency:
+
+    ```bash
+    YARN_CHECKSUM_BEHAVIOR=update yarn install --immutable
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Building Plugins
+
+Some built-in plugins require separate builds:
+
+### Build All Plugins
+
+```bash
+yarn plugin:build:dev
+```
+
+<Warning>
+  This is resource-intensive as it starts separate build processes for each plugin.
+</Warning>
+
+### Build Specific Plugins
+
+Build a single plugin:
+```bash
+yarn workspace @grafana-plugins/tempo dev
+```
+
+Build multiple specific plugins:
+```bash
+yarn nx run-many -t dev --projects="@grafana-plugins/grafana-azure-monitor-datasource,@grafana-plugins/jaeger"
+```
+
+### List All Plugins
+
+```bash
+yarn nx show projects --projects="@grafana-plugins/*"
+```
+
+### Plugins Requiring Separate Builds
+
+- azuremonitor
+- cloud-monitoring
+- grafana-postgresql-datasource
+- grafana-pyroscope-datasource
+- grafana-testdata-datasource
+- jaeger
+- loki
+- mysql
+- parca
+- tempo
+- zipkin
+
+## Building Both Frontend and Backend
+
+Build everything in one command:
+
+```bash
+make build
+```
+
+This runs:
+1. `make build-go` - Builds backend
+2. `yarn build` - Builds frontend
+
+## Code Generation
+
+Some changes require regenerating code:
+
+### Wire Dependency Injection
+
+After modifying service initialization:
+
+```bash
+make gen-go
+```
+
+### CUE Schemas
+
+After modifying dashboard/panel schemas in `kinds/`:
+
+```bash
+make gen-cue
+```
+
+### Feature Toggles
+
+After adding/modifying feature flags in `pkg/services/featuremgmt/`:
+
+```bash
+make gen-feature-toggles
+```
+
+### App SDK Apps
+
+After modifying apps in `apps/`:
+
+```bash
+make gen-apps
+```
+
+Or for a specific app:
+```bash
+make gen-apps app=dashboard
+```
+
+### Go Workspace
+
+After adding Go modules:
+
+```bash
+make update-workspace
+```
+
+### OpenAPI/Swagger Specs
+
+After API changes:
+
+```bash
+make swagger-gen
+```
+
+### i18n String Extraction
+
+After adding translatable strings:
+
+```bash
+make i18n-extract
+```
+
+## Building for Docker
+
+Build a development Docker image:
+
+```bash
+make build-docker-full
+```
+
+The image is tagged as `grafana/grafana:dev`.
+
+<Info>
+  On Docker for macOS, increase memory limit to >2 GiB in **Docker Desktop → Preferences → Advanced**.
+</Info>
+
+Build Ubuntu-based image:
+```bash
+make build-docker-full-ubuntu
+```
+
+## Linting and Formatting
+
+Before committing, ensure your code passes linting:
+
+### Backend
+
+```bash
+make lint-go              # Run golangci-lint
+make gofmt                # Format Go code
+```
+
+### Frontend
+
+```bash
+yarn lint                 # ESLint
+yarn lint:fix             # ESLint with auto-fix
+yarn prettier:write       # Format with Prettier
+yarn typecheck            # TypeScript type checking
+```
+
+## Build Configuration
+
+### Environment Variables
+
+| Variable          | Purpose                                    |
+| ----------------- | ------------------------------------------ |
+| `CGO_ENABLED`     | Enable/disable CGO (0 or 1)                |
+| `GO_BUILD_TAGS`   | Go build tags (e.g., `oss`, `enterprise`)  |
+| `NODE_ENV`        | Node environment (`dev` or `production`)   |
+| `GO_RACE`         | Enable Go race detector                    |
+
+### Makefile Targets
+
+View all available targets:
+
+```bash
+make help
+```
+
+Common targets:
+- `make run` - Run backend with hot-reload
+- `make build` - Build frontend and backend
+- `make build-backend` - Build backend only
+- `make test-go` - Run backend tests
+- `make test-js` - Run frontend tests
+- `make devenv` - Start development services
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Testing" icon="flask" href="/development/contributing/testing">
+    Run tests for your changes
+  </Card>
+  <Card title="Creating Pull Requests" icon="code-pull-request" href="/development/contributing/pull-requests">
+    Submit your changes for review
+  </Card>
+</CardGroup>

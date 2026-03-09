@@ -1,0 +1,196 @@
+---
+title: Dashboards Overview
+description: Learn about Grafana dashboards, their purpose, and key features for visualizing and monitoring your data.
+---
+
+# Dashboards Overview
+
+Dashboards are the primary way to visualize and organize your data in Grafana. A dashboard is a collection of panels arranged in a customizable grid layout, allowing you to monitor metrics, logs, traces, and other data sources in a single view.
+
+## What is a Dashboard?
+
+A Grafana dashboard consists of:
+
+<CardGroup cols={2}>
+  <Card title="Panels" icon="chart-line">
+    Individual visualizations that display your data using various chart types, graphs, and tables
+  </Card>
+  <Card title="Variables" icon="sliders">
+    Dynamic filters that allow you to change data sources, time ranges, and query parameters interactively
+  </Card>
+  <Card title="Annotations" icon="tag">
+    Event markers that provide context by displaying important events on your visualizations
+  </Card>
+  <Card title="Links" icon="link">
+    Navigation between dashboards and external resources for better workflow integration
+  </Card>
+</CardGroup>
+
+## Key Features
+
+### Grid Layout System
+
+Dashboards use a 24-column grid system with customizable row heights. Panels can be:
+
+- Resized by dragging corners
+- Repositioned by dragging the panel header
+- Organized into collapsible rows for better organization
+- Repeated dynamically based on variable values
+
+### Time Range Controls
+
+Every dashboard has a time range picker that controls the time period for all panels:
+
+```typescript
+interface TimeRange {
+  from: string | DateTimeInput; // e.g., "now-6h"
+  to: string | DateTimeInput;   // e.g., "now"
+}
+```
+
+Panels can also override the dashboard time range with their own `timeFrom` and `timeShift` settings.
+
+### Dashboard Model
+
+The `DashboardModel` class manages the dashboard state and behavior:
+
+```typescript
+interface Dashboard {
+  uid: string;              // Unique identifier
+  title: string;            // Dashboard title
+  tags: string[];           // Searchable tags
+  timezone: string;         // Timezone setting
+  editable: boolean;        // Whether dashboard can be edited
+  panels: PanelModel[];     // Array of panels
+  templating: {             // Variable definitions
+    list: VariableModel[];
+  };
+  time: {                   // Default time range
+    from: string;
+    to: string;
+  };
+  refresh?: string;         // Auto-refresh interval
+  schemaVersion: number;    // Schema version for migrations
+}
+```
+
+<Note>
+  The dashboard schema is defined in `packages/grafana-schema/src/schema/dashboard/` and is versioned to support migrations.
+</Note>
+
+## Dashboard Metadata
+
+Each dashboard has metadata that controls permissions and capabilities:
+
+```typescript
+interface DashboardMeta {
+  canEdit: boolean;         // User can edit
+  canSave: boolean;         // User can save
+  canDelete: boolean;       // User can delete
+  canShare: boolean;        // User can share
+  canStar: boolean;         // User can star/favorite
+  url?: string;             // Dashboard URL
+  slug?: string;            // URL-friendly identifier
+}
+```
+
+## Dashboard Types
+
+### Standard Dashboards
+
+Regular dashboards that you create and manage in Grafana.
+
+### Provisioned Dashboards
+
+Dashboards defined in configuration files that are automatically loaded. These are typically read-only in the UI.
+
+### Scripted Dashboards
+
+Programmatically generated dashboards using JavaScript or other scripting languages.
+
+### Library Dashboards
+
+Dashboards stored in plugin libraries that can be installed and used across Grafana instances.
+
+## Dashboard Lifecycle
+
+<Steps>
+  <Step title="Creation">
+    Create a new dashboard from scratch, duplicate an existing one, or import from JSON
+  </Step>
+  <Step title="Configuration">
+    Add panels, configure variables, set time ranges, and organize layout
+  </Step>
+  <Step title="Saving">
+    Save to a folder with appropriate permissions. Each save increments the version number
+  </Step>
+  <Step title="Sharing">
+    Share via links, snapshots, exports, or by granting team/user permissions
+  </Step>
+  <Step title="Versioning">
+    Every save creates a new version that can be compared and restored
+  </Step>
+</Steps>
+
+## Dashboard Settings
+
+Access dashboard settings through the gear icon to configure:
+
+- **General**: Title, description, tags, timezone, auto-refresh
+- **Variables**: Dashboard-level variables and templating
+- **Links**: Dashboard and external links
+- **Annotations**: Annotation queries and configuration
+- **Versions**: Version history and comparison
+- **Permissions**: User and team access control
+- **JSON Model**: Raw dashboard JSON for advanced editing
+
+## Performance Considerations
+
+<Warning>
+  Keep these best practices in mind for optimal dashboard performance:
+</Warning>
+
+- **Limit panel count**: Too many panels (>30) can slow down rendering
+- **Optimize queries**: Use appropriate time ranges and intervals
+- **Use query caching**: Enable `queryCachingTTL` for expensive queries
+- **Avoid auto-refresh on large dashboards**: Set longer refresh intervals
+- **Use variables efficiently**: Variables that trigger many panel refreshes can impact performance
+
+## Dashboard Grid Configuration
+
+The dashboard grid uses these constants:
+
+```typescript
+const GRID_COLUMN_COUNT = 24;     // Total columns
+const GRID_CELL_HEIGHT = 30;      // Height in pixels
+const GRID_CELL_VMARGIN = 10;     // Vertical margin
+```
+
+Panel positions are defined by `GridPos`:
+
+```typescript
+interface GridPos {
+  x: number;        // Column position (0-23)
+  y: number;        // Row position
+  w: number;        // Width in columns
+  h: number;        // Height in grid units
+  static?: boolean; // Prevents auto-repositioning
+}
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Creating Dashboards" href="/dashboards/creating-dashboards" icon="plus">
+    Learn how to create your first dashboard from scratch
+  </Card>
+  <Card title="Working with Panels" href="/dashboards/panels" icon="chart-bar">
+    Understand panel types and configuration options
+  </Card>
+  <Card title="Dashboard Variables" href="/dashboards/variables" icon="sliders">
+    Add dynamic filters using variables
+  </Card>
+  <Card title="Sharing Dashboards" href="/dashboards/sharing" icon="share">
+    Share your dashboards with others
+  </Card>
+</CardGroup>

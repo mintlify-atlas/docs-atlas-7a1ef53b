@@ -1,0 +1,443 @@
+---
+title: Alert Rules
+description: Create and manage alert rules in Grafana's unified alerting system
+---
+
+Alert rules define the conditions that trigger alerts in Grafana. They combine data queries with expressions to evaluate alert conditions.
+
+## Rule Structure
+
+An alert rule consists of several key components:
+
+<CodeGroup>
+
+```typescript Complete Alert Rule
+interface AlertRule {
+  // Identity
+  id: number;
+  uid: string;        // Unique identifier
+  orgID: number;
+  
+  // Definition
+  title: string;
+  condition: string;  // RefID of the condition expression
+  data: AlertQuery[]; // Queries and expressions
+  
+  // Scheduling
+  intervalSeconds: number;  // How often to evaluate
+  for: Duration;            // Pending duration before firing
+  keepFiringFor: Duration;  // Keep firing after resolved
+  
+  // Organization
+  namespaceUID: string;  // Folder UID
+  ruleGroup: string;     // Group name
+  ruleGroupIndex: number;
+  
+  // Behavior
+  noDataState: 'Alerting' | 'NoData' | 'OK' | 'KeepLast';
+  execErrState: 'Alerting' | 'Error' | 'OK' | 'KeepLast';
+  isPaused: boolean;
+  
+  // Metadata
+  labels: Record<string, string>;
+  annotations: Record<string, string>;
+  
+  // Notifications
+  notificationSettings?: NotificationSettings;
+  
+  // Recording rule specific
+  record?: Record;
+}
+```
+
+```typescript Alert Query
+interface AlertQuery {
+  refID: string;              // Unique identifier for this query
+  queryType: string;          // '' for datasource, 'expression' for expressions
+  datasourceUID: string;      // Data source identifier
+  model: object;              // Query-specific configuration
+  relativeTimeRange: {
+    from: number;             // Seconds from now
+    to: number;
+  };
+}
+```
+
+</CodeGroup>
+
+## Query and Expression Model
+
+Alert rules use a query + expression model:
+
+1. **Data Source Queries**: Fetch data from data sources (Prometheus, Loki, etc.)
+2. **Expressions**: Transform and evaluate query results
+3. **Condition**: The expression that determines alert state
+
+<CodeGroup>
+
+```json Data Source Query Example
+{
+  "refID": "A",
+  "queryType": "",
+  "datasourceUID": "prometheus-uid",
+  "model": {
+    "expr": "up{job=\"grafana\"}",
+    "refId": "A"
+  },
+  "relativeTimeRange": {
+    "from": 600,
+    "to": 0
+  }
+}
+```
+
+```json Expression Example
+{
+  "refID": "B",
+  "queryType": "expression",
+  "datasourceUID": "__expr__",
+  "model": {
+    "type": "reduce",
+    "expression": "A",
+    "reducer": "last",
+    "settings": {
+      "mode": "strict"
+    }
+  }
+}
+```
+
+```json Threshold Condition
+{
+  "refID": "C",
+  "queryType": "expression",
+  "datasourceUID": "__expr__",
+  "model": {
+    "type": "threshold",
+    "expression": "B",
+    "conditions": [
+      {
+        "evaluator": {
+          "type": "lt",
+          "params": [1]
+        }
+      }
+    ]
+  }
+}
+```
+
+</CodeGroup>
+
+## State Handling
+
+### Pending Duration (`for`)
+
+The `for` duration specifies how long a condition must be true before the alert fires:
+
+```typescript
+// Alert only fires if condition is true for 5 minutes
+for: '5m'
+```
+
+### Keep Firing For (`keepFiringFor`)
+
+Keeps the alert in a firing state even after the condition resolves:
+
+```typescript
+// Keep firing for 10 minutes after resolution
+keepFiringFor: '10m'
+```
+
+### NoData State
+
+Controls behavior when queries return no data:
+
+<CodeGroup>
+
+```typescript Alerting
+noDataState: 'Alerting'  // Fire alert when no data
+```
+
+```typescript NoData
+noDataState: 'NoData'    // Create NoData state
+```
+
+```typescript OK
+noDataState: 'OK'        // Treat as normal
+```
+
+```typescript KeepLast
+noDataState: 'KeepLast'  // Maintain previous state
+```
+
+</CodeGroup>
+
+### Execution Error State
+
+Controls behavior when query execution fails:
+
+```typescript
+execErrState: 'Alerting' | 'Error' | 'OK' | 'KeepLast'
+```
+
+## Labels and Annotations
+
+### Labels
+
+Labels are used for:
+- Routing alerts to contact points
+- Grouping related alerts
+- Filtering and searching
+
+```typescript
+labels: {
+  team: 'backend',
+  severity: 'critical',
+  service: 'api'
+}
+```
+
+<Warning>
+**Reserved Labels** - These labels are automatically managed:
+- `grafana_folder`: Folder title
+- `__grafana_receiver__`: Auto-routing receiver
+- `__grafana_route_settings_hash__`: Notification settings identifier
+</Warning>
+
+### Annotations
+
+Annotations provide additional context:
+
+```typescript
+annotations: {
+  description: 'Service {{ $labels.service }} is down',
+  runbook_url: 'https://wiki.example.com/runbooks/service-down',
+  summary: 'Critical service outage',
+  __dashboardUid__: 'abc123',  // Links to dashboard
+  __panelId__: '2'              // Links to specific panel
+}
+```
+
+## Rule Groups
+
+Rules are organized into groups that share an evaluation interval:
+
+<CodeGroup>
+
+```go Rule Group Structure
+type AlertRuleGroup struct {
+    Title      string      // Group name
+    FolderUID  string      // Parent folder
+    Interval   int64       // Evaluation interval in seconds
+    Rules      []AlertRule // Rules in this group
+}
+```
+
+```typescript Group Constraints
+// Interval must be:
+// 1. Divisible by base interval (default 10s)
+// 2. Same for all rules in group
+interval: 60  // Valid: 60s is divisible by 10s
+```
+
+</CodeGroup>
+
+## Recording Rules
+
+Recording rules pre-compute expensive queries and store results:
+
+<CodeGroup>
+
+```go Recording Rule Model
+type Record struct {
+    // Metric name to write
+    Metric string
+    
+    // Which query/expression provides the result
+    From string
+    
+    // Data source to write to
+    TargetDatasourceUID string
+}
+```
+
+```typescript Recording Rule Example
+{
+  title: 'job:http_requests:rate5m',
+  record: {
+    metric: 'job:http_requests:rate5m',
+    from: 'B',  // RefID of expression
+    targetDatasourceUID: 'prometheus-uid'
+  },
+  data: [
+    {
+      refID: 'A',
+      datasourceUID: 'prometheus-uid',
+      model: { expr: 'rate(http_requests_total[5m])' }
+    },
+    {
+      refID: 'B',
+      queryType: 'expression',
+      model: {
+        type: 'reduce',
+        expression: 'A',
+        reducer: 'sum',
+        settings: { mode: 'replaceNonNumeric' }
+      }
+    }
+  ]
+}
+```
+
+</CodeGroup>
+
+<Note>
+Recording rules ignore alerting-specific fields:
+- `noDataState`
+- `execErrState`
+- `condition`
+- `for`
+- `keepFiringFor`
+- `notificationSettings`
+</Note>
+
+## Notification Settings
+
+Rules can define inline notification routing:
+
+<CodeGroup>
+
+```typescript Contact Point Routing
+notificationSettings: {
+  contactPointRouting: {
+    receiver: 'ops-team',
+    groupBy: ['alertname', 'severity'],
+    groupWait: '30s',
+    groupInterval: '5m',
+    repeatInterval: '4h',
+    muteTimeIntervals: ['business-hours']
+  }
+}
+```
+
+```typescript Policy Routing
+notificationSettings: {
+  policyRouting: {
+    policyUID: 'custom-policy-uid'
+  }
+}
+```
+
+</CodeGroup>
+
+## Rule Validation
+
+Rules must pass validation before being saved:
+
+<Steps>
+  <Step title="UID Validation">
+    Rule UID must be valid (alphanumeric, hyphens, underscores)
+  </Step>
+  
+  <Step title="Query Validation">
+    At least one query or expression must be defined
+  </Step>
+  
+  <Step title="Interval Validation">
+    Interval must be divisible by base interval (default 10s)
+  </Step>
+  
+  <Step title="State Validation">
+    NoData and ExecErr states must be valid enum values
+  </Step>
+  
+  <Step title="Namespace Validation">
+    Folder must exist and not be managed by Git Sync
+  </Step>
+  
+  <Step title="Label Validation">
+    Reserved labels cannot be manually set
+  </Step>
+</Steps>
+
+## Backend API Endpoints
+
+<CodeGroup>
+
+```go Get Alert Rule
+// Location: pkg/services/ngalert/store
+func (st *DBstore) GetAlertRuleByUID(
+    ctx context.Context,
+    query *models.GetAlertRuleByUIDQuery,
+) (*models.AlertRule, error)
+```
+
+```go List Alert Rules
+func (st *DBstore) ListAlertRules(
+    ctx context.Context,
+    query *models.ListAlertRulesQuery,
+) (models.RulesGroup, error)
+```
+
+```go Update Rule Group
+func (st *DBstore) UpdateRuleGroup(
+    ctx context.Context,
+    orgID int64,
+    namespaceUID string,
+    ruleGroup string,
+    rules []*models.AlertRule,
+) error
+```
+
+</CodeGroup>
+
+## Common Patterns
+
+### Dashboard Panel Alerts
+
+Link an alert to a dashboard panel:
+
+```typescript
+annotations: {
+  __dashboardUid__: 'dashboard-uid',
+  __panelId__: '5'
+}
+```
+
+### Multi-Condition Alerts
+
+Combine multiple conditions:
+
+```typescript
+data: [
+  { refID: 'A', /* CPU query */ },
+  { refID: 'B', /* Memory query */ },
+  { 
+    refID: 'C',
+    queryType: 'expression',
+    model: {
+      type: 'math',
+      expression: '$A > 80 || $B > 90'
+    }
+  }
+],
+condition: 'C'
+```
+
+## Related Resources
+
+<CardGroup cols={2}>
+  <Card title="Overview" icon="book" href="./overview">
+    Understand the alerting architecture
+  </Card>
+  <Card title="Contact Points" icon="envelope" href="./contact-points">
+    Configure notification destinations
+  </Card>
+  <Card title="Notification Policies" icon="route" href="./notification-channels">
+    Route alerts to contact points
+  </Card>
+  <Card title="Silences" icon="bell-slash" href="./silences">
+    Temporarily mute notifications
+  </Card>
+</CardGroup>

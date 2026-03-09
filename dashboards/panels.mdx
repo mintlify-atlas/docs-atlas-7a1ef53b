@@ -1,0 +1,526 @@
+---
+title: Dashboard Panels
+description: Complete guide to panel types, configuration, and organization in Grafana dashboards.
+---
+
+# Dashboard Panels
+
+Panels are the building blocks of Grafana dashboards. Each panel displays a visualization of your data using queries, transformations, and customizable options.
+
+## Panel Model
+
+The `PanelModel` class represents a panel's configuration and state:
+
+```typescript
+interface PanelModel {
+  id: number;                    // Unique panel ID within dashboard
+  type: string;                  // Visualization type (e.g., "timeseries")
+  title: string;                 // Panel title
+  gridPos: GridPos;              // Position and size on grid
+  targets: DataQuery[];          // Array of queries
+  transformations?: DataTransformerConfig[];  // Data transformations
+  datasource: DataSourceRef | null;  // Data source reference
+  options: Record<string, any>;  // Panel-specific options
+  fieldConfig: FieldConfigSource;  // Field configuration and overrides
+  transparent: boolean;          // Transparent background
+  description?: string;          // Panel description
+  links?: DataLink[];            // Panel links
+}
+```
+
+## Panel Types
+
+Grafana includes many built-in visualizations:
+
+### Time Series Visualizations
+
+<CardGroup cols={2}>
+  <Card title="Time Series" icon="chart-line">
+    Line, bar, and area charts for time-series data with multiple series support
+  </Card>
+  <Card title="State Timeline" icon="stream">
+    Visualize state changes over time with categorical data
+  </Card>
+  <Card title="Status History" icon="history">
+    Show periodic state over time in a grid format
+  </Card>
+  <Card title="Trend" icon="chart-area">
+    Display trends and sparklines for single metrics
+  </Card>
+</CardGroup>
+
+### Statistical Visualizations
+
+<CardGroup cols={2}>
+  <Card title="Stat" icon="gauge">
+    Single value with optional graph and thresholds
+  </Card>
+  <Card title="Gauge" icon="tachometer-alt">
+    Radial or linear gauge for displaying single values
+  </Card>
+  <Card title="Bar Gauge" icon="align-left">
+    Horizontal or vertical bars with threshold colors
+  </Card>
+  <Card title="Heatmap" icon="th">
+    Visualize value distribution over time in a heat map
+  </Card>
+</CardGroup>
+
+### Graph Visualizations
+
+<CardGroup cols={2}>
+  <Card title="Bar Chart" icon="chart-bar">
+    Categorical data visualization with grouped or stacked bars
+  </Card>
+  <Card title="Histogram" icon="chart-column">
+    Distribution of values across buckets
+  </Card>
+  <Card title="Pie Chart" icon="chart-pie">
+    Proportional data visualization
+  </Card>
+  <Card title="Candlestick" icon="chart-candlestick">
+    Financial data with OHLC (Open, High, Low, Close) values
+  </Card>
+</CardGroup>
+
+### Data Visualizations
+
+<CardGroup cols={2}>
+  <Card title="Table" icon="table">
+    Tabular data display with sorting, filtering, and formatting
+  </Card>
+  <Card title="Logs" icon="file-alt">
+    Log line display with parsing and filtering
+  </Card>
+  <Card title="Node Graph" icon="project-diagram">
+    Network topology and relationship visualization
+  </Card>
+  <Card title="Traces" icon="route">
+    Distributed tracing visualization
+  </Card>
+</CardGroup>
+
+### Geo & Special
+
+<CardGroup cols={2}>
+  <Card title="Geomap" icon="map">
+    Geographical data on interactive maps
+  </Card>
+  <Card title="Canvas" icon="palette">
+    Custom visualizations with drag-and-drop elements
+  </Card>
+  <Card title="Dashboard List" icon="list">
+    List of dashboards matching criteria
+  </Card>
+  <Card title="Alert List" icon="bell">
+    Active alerts and their states
+  </Card>
+</CardGroup>
+
+## Creating and Configuring Panels
+
+### Adding a Panel
+
+<Steps>
+  <Step title="Enter Edit Mode">
+    Click **Add** → **Visualization** or the **+** icon on an existing panel
+  </Step>
+  <Step title="Select Visualization">
+    Choose the visualization type from the picker
+  </Step>
+  <Step title="Configure Query">
+    Build your query using the data source query editor
+  </Step>
+  <Step title="Customize Options">
+    Adjust panel options, field config, and overrides
+  </Step>
+  <Step title="Apply Changes">
+    Click **Apply** to save the panel to the dashboard
+  </Step>
+</Steps>
+
+### Panel Editor Interface
+
+The panel editor has three main sections:
+
+```typescript
+interface PanelEditorLayout {
+  visualization: {
+    preview: PanelPreview;     // Live preview of panel
+    controls: VisualizationPicker;
+  };
+  queryEditor: {
+    tabs: ['Query', 'Transform', 'Alert'];  // Data pipeline tabs
+    queries: DataQuery[];      // Query configurations
+    transformations: DataTransformerConfig[];
+  };
+  optionsPane: {
+    sections: [
+      'Panel options',         // Title, description, links
+      'Tooltip',              // Tooltip configuration
+      'Legend',               // Legend settings
+      'Graph styles',         // Visualization-specific
+      'Standard options',     // Field config defaults
+      'Overrides'            // Field-specific overrides
+    ];
+  };
+}
+```
+
+## Query Configuration
+
+Panels can have multiple queries that are combined:
+
+```typescript
+interface DataQuery {
+  refId: string;              // Unique reference ID (A, B, C...)
+  datasource?: DataSourceRef; // Optional datasource override
+  hide?: boolean;             // Hide this query
+  // ... datasource-specific query properties
+}
+
+// Example: Multiple queries in a panel
+targets: [
+  {
+    refId: "A",
+    expr: "rate(http_requests_total[5m])",
+    legendFormat: "Requests/sec"
+  },
+  {
+    refId: "B",
+    expr: "rate(http_errors_total[5m])",
+    legendFormat: "Errors/sec"
+  }
+]
+```
+
+### Query Options
+
+Control query behavior:
+
+```typescript
+interface QueryOptions {
+  maxDataPoints?: number;      // Maximum data points to return
+  interval?: string;           // Minimum time interval (e.g., "1m")
+  cacheTimeout?: string;       // Cache duration (e.g., "60")
+  queryCachingTTL?: number;    // Query cache TTL in milliseconds
+  timeFrom?: string;           // Panel time override (e.g., "now-1h")
+  timeShift?: string;          // Shift time range (e.g., "1d")
+  hideTimeOverride?: boolean;  // Hide time override indicator
+}
+```
+
+## Field Configuration
+
+Field configuration controls how data is displayed:
+
+```typescript
+interface FieldConfigSource {
+  defaults: FieldConfig;       // Default config for all fields
+  overrides: FieldConfigOverride[];  // Field-specific overrides
+}
+
+interface FieldConfig {
+  unit?: string;               // Display unit (e.g., "bytes", "percent")
+  decimals?: number;           // Decimal precision
+  min?: number;                // Minimum value
+  max?: number;                // Maximum value
+  displayName?: string;        // Override field display name
+  color?: FieldColor;          // Color configuration
+  thresholds?: ThresholdsConfig;  // Threshold settings
+  mappings?: ValueMapping[];   // Value mappings
+  links?: DataLink[];          // Data links
+  custom?: Record<string, any>;  // Visualization-specific config
+}
+```
+
+### Thresholds
+
+Define color-coded thresholds:
+
+```typescript
+interface ThresholdsConfig {
+  mode: ThresholdsMode;  // 'absolute' or 'percentage'
+  steps: Threshold[];    // Array of threshold steps
+}
+
+interface Threshold {
+  value: number;         // Threshold value
+  color: string;         // Color when value exceeds threshold
+}
+
+// Example
+thresholds: {
+  mode: 'absolute',
+  steps: [
+    { value: 0, color: 'green' },      // 0-80: green
+    { value: 80, color: 'yellow' },    // 80-90: yellow
+    { value: 90, color: 'red' }        // 90+: red
+  ]
+}
+```
+
+### Value Mappings
+
+Map values to text or colors:
+
+```typescript
+interface ValueMapping {
+  type: 'value' | 'range' | 'regex' | 'special';
+  options: {
+    match?: string | number;    // For 'value' type
+    from?: number;              // For 'range' type
+    to?: number;
+    pattern?: string;           // For 'regex' type
+    result: {
+      text?: string;
+      color?: string;
+      icon?: string;
+    };
+  };
+}
+
+// Example: Map numeric status to text
+mappings: [
+  {
+    type: 'value',
+    options: {
+      match: 1,
+      result: { text: 'OK', color: 'green' }
+    }
+  },
+  {
+    type: 'value',
+    options: {
+      match: 0,
+      result: { text: 'Failed', color: 'red' }
+    }
+  }
+]
+```
+
+## Data Transformations
+
+Transform query results before visualization:
+
+```typescript
+interface DataTransformerConfig {
+  id: string;              // Transformer ID
+  options: any;            // Transformer-specific options
+  disabled?: boolean;      // Disable transformation
+}
+
+// Common transformations
+transformations: [
+  {
+    id: 'filterFieldsByName',
+    options: {
+      include: { names: ['time', 'value'] }
+    }
+  },
+  {
+    id: 'calculateField',
+    options: {
+      mode: 'binary',
+      reduce: { reducer: 'sum' },
+      binary: {
+        left: 'A',
+        operator: '/',
+        right: 'B'
+      },
+      alias: 'Ratio'
+    }
+  }
+]
+```
+
+### Common Transformations
+
+<CardGroup cols={2}>
+  <Card title="Filter by Name" icon="filter">
+    Include or exclude fields by name or regex pattern
+  </Card>
+  <Card title="Organize Fields" icon="sort">
+    Reorder, rename, and hide fields
+  </Card>
+  <Card title="Join by Field" icon="object-group">
+    Combine multiple queries by a common field
+  </Card>
+  <Card title="Add Field from Calculation" icon="calculator">
+    Create calculated fields using math expressions
+  </Card>
+  <Card title="Group By" icon="layer-group">
+    Group data by field values
+  </Card>
+  <Card title="Sort By" icon="sort-amount-down">
+    Sort data by field values
+  </Card>
+  <Card title="Reduce" icon="compress">
+    Reduce multiple values to single values using aggregation
+  </Card>
+  <Card title="Series to Rows" icon="exchange-alt">
+    Convert time series to row format
+  </Card>
+</CardGroup>
+
+## Panel Links
+
+Add clickable links to panels:
+
+```typescript
+interface DataLink {
+  title: string;              // Link text
+  url: string;                // URL with variable support
+  targetBlank?: boolean;      // Open in new tab
+  onClick?: Function;         // Custom click handler
+}
+
+// Example: Link to detailed dashboard
+links: [
+  {
+    title: "View Details",
+    url: "/d/xyz/${__field.name}?var-instance=${__field.labels.instance}",
+    targetBlank: true
+  }
+]
+```
+
+<Note>
+  Panel links support variable interpolation including `${__field.name}`, `${__field.labels.labelname}`, `${__value.raw}`, and `${__value.text}`.
+</Note>
+
+## Panel Repeating
+
+Dynamically create panels based on variable values:
+
+```typescript
+interface PanelRepeat {
+  repeat?: string;            // Variable name to repeat by
+  repeatDirection?: 'h' | 'v';  // Horizontal or vertical
+  maxPerRow?: number;         // Max panels per row (horizontal only)
+}
+
+// Example: Create panel for each server
+repeat: "server"              // Variable named "server"
+repeatDirection: "h"          // Arrange horizontally
+maxPerRow: 4                  // 4 panels per row
+```
+
+<Steps>
+  <Step title="Create a Variable">
+    Add a multi-value variable in dashboard settings
+  </Step>
+  <Step title="Configure Panel Repeat">
+    In panel editor, go to **Panel options** → **Repeat options**
+  </Step>
+  <Step title="Select Variable">
+    Choose the variable to repeat by
+  </Step>
+  <Step title="Set Direction">
+    Choose horizontal or vertical layout
+  </Step>
+</Steps>
+
+## Panel Options
+
+Each panel type has specific options. Common options include:
+
+```typescript
+interface CommonPanelOptions {
+  title?: string;             // Panel title
+  description?: string;       // Panel description (tooltip)
+  transparent?: boolean;      // Transparent background
+  links?: DataLink[];         // Panel links
+  
+  // Common display options
+  legend?: {
+    show: boolean;
+    placement: 'bottom' | 'right' | 'top';
+    displayMode: 'list' | 'table';
+    calcs: string[];          // Calculations to show
+  };
+  
+  tooltip?: {
+    mode: 'single' | 'multi' | 'none';
+    sort: 'none' | 'asc' | 'desc';
+  };
+}
+```
+
+## Best Practices
+
+<Warning>
+  Follow these guidelines for effective panel design:
+</Warning>
+
+### Query Optimization
+
+- Use appropriate time ranges for your data frequency
+- Set `maxDataPoints` to match panel width
+- Enable query caching for expensive queries
+- Use query interval hints: `$__interval` or `$__rate_interval`
+
+### Visual Design
+
+- Keep panel titles clear and concise
+- Use consistent color schemes across related panels
+- Add descriptions for complex visualizations
+- Choose appropriate visualization types for your data
+
+### Performance
+
+- Limit the number of series per panel (aim for less than 50)
+- Use transformations efficiently
+- Avoid unnecessary field overrides
+- Consider panel caching for static data
+
+## Advanced Features
+
+### Library Panels
+
+Create reusable panels across dashboards:
+
+```typescript
+interface LibraryPanel {
+  uid: string;                // Library panel UID
+  name: string;               // Panel name
+  model: PanelModel;          // Panel configuration
+  version: number;            // Version number
+}
+
+// Reference in dashboard
+library Panel: {
+  uid: "lib-panel-123",
+  name: "CPU Usage Panel"
+}
+```
+
+### Panel Migration
+
+Panels can define migration handlers:
+
+```typescript
+interface PanelPlugin {
+  onPanelMigration?: (panel: PanelModel) => Promise<Partial<PanelOptions>>;
+  shouldMigrate?: (panel: PanelModel) => boolean;
+}
+
+// Automatically runs when pluginVersion changes
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Dashboard Variables" href="/dashboards/variables" icon="sliders">
+    Add dynamic filtering with variables
+  </Card>
+  <Card title="Templating" href="/dashboards/templating" icon="code">
+    Use template syntax in queries and titles
+  </Card>
+  <Card title="Transformations" href="/dashboards/panels#data-transformations" icon="exchange-alt">
+    Learn about all available transformations
+  </Card>
+  <Card title="Sharing" href="/dashboards/sharing" icon="share">
+    Share individual panels or entire dashboards
+  </Card>
+</CardGroup>

@@ -1,0 +1,684 @@
+---
+title: 'Adding Data Sources'
+description: 'Learn how to connect and configure data sources in Grafana'
+---
+
+# Adding Data Sources
+
+Data sources are the foundation of Grafana. They provide the connection between Grafana and your data, whether it's metrics, logs, traces, or other time-series data.
+
+This guide covers how to add, configure, and manage data sources in Grafana.
+
+## Prerequisites
+
+Before you begin:
+
+- Grafana is installed and running
+- You have Organization Admin permissions
+- You have connection details for your data source (URL, credentials, etc.)
+- Network connectivity to your data source
+
+## Understanding Data Sources
+
+A **data source** represents a connection to a backend system that stores data. Grafana supports:
+
+- **Time-series databases**: Prometheus, InfluxDB, Graphite
+- **SQL databases**: PostgreSQL, MySQL, Microsoft SQL Server
+- **Logging systems**: Loki, Elasticsearch
+- **Tracing systems**: Tempo, Jaeger, Zipkin
+- **Cloud monitoring**: CloudWatch, Azure Monitor, Google Cloud Monitoring
+- **Many more**: See the [full list](https://grafana.com/grafana/plugins/?type=datasource)
+
+<Info>
+Only users with the **Organization Admin** role can add or modify data sources.
+</Info>
+
+## Built-in Data Sources
+
+Grafana includes these core data sources:
+
+<CardGroup cols={3}>
+  <Card title="Prometheus" icon="fire">
+    Time-series metrics database
+  </Card>
+  <Card title="Loki" icon="scroll">
+    Log aggregation system
+  </Card>
+  <Card title="Tempo" icon="network-wired">
+    Distributed tracing backend
+  </Card>
+  <Card title="Elasticsearch" icon="magnifying-glass">
+    Search and analytics engine
+  </Card>
+  <Card title="PostgreSQL" icon="database">
+    Relational database
+  </Card>
+  <Card title="MySQL" icon="database">
+    Relational database
+  </Card>
+  <Card title="CloudWatch" icon="cloud">
+    AWS monitoring service
+  </Card>
+  <Card title="Azure Monitor" icon="cloud">
+    Azure monitoring service
+  </Card>
+  <Card title="TestData" icon="vial">
+    Built-in test data for demos
+  </Card>
+</CardGroup>
+
+## Adding Your First Data Source
+
+### Step 1: Access Data Source Management
+
+1. Click **Connections** in the left sidebar
+2. Click **Data sources** under "Your connections"
+3. Click **Add data source**
+
+You'll see a list of available data sources.
+
+### Step 2: Select a Data Source Type
+
+Let's add a Prometheus data source as an example.
+
+1. Search for **Prometheus** in the search box
+2. Click on **Prometheus** to select it
+
+<Tip>
+You can filter by data source type (Metrics, Logs, Tracing) or by provider.
+</Tip>
+
+### Step 3: Configure Basic Settings
+
+Each data source has specific configuration requirements.
+
+#### Name and Default
+
+- **Name**: `Prometheus-Production`
+- **Default**: Toggle ON to make this the default data source
+
+<Note>
+The default data source is automatically selected when creating new panels.
+</Note>
+
+#### Connection Settings
+
+- **URL**: `http://prometheus:9090`
+- **Access**: Server (default) - Grafana backend accesses the data source
+
+<Accordion title="Server vs Browser Access">
+  **Server (Recommended)**
+  - Grafana backend makes requests to the data source
+  - Works with data sources not accessible from browsers
+  - Better security (credentials stay on server)
+  - Supports alerting
+
+  **Browser**
+  - User's browser makes requests directly
+  - Useful for publicly accessible data sources
+  - Subject to CORS restrictions
+  - Does not support alerting
+</Accordion>
+
+### Step 4: Configure Authentication
+
+Depending on your data source, you may need to configure authentication.
+
+#### Basic Authentication
+
+```text
+Basic auth: ON
+User: admin
+Password: your-secure-password
+```
+
+#### Custom HTTP Headers
+
+```text
+Header: Authorization
+Value: Bearer your-api-token
+```
+
+#### TLS Client Authentication
+
+```text
+With CA Cert: ON
+CA Cert: [Paste CA certificate]
+Client Cert: [Paste client certificate]
+Client Key: [Paste client key]
+```
+
+### Step 5: Configure Additional Settings
+
+#### Timeout
+
+- **HTTP method**: POST (recommended for Prometheus)
+- **Timeout**: 60 seconds
+
+#### Query Settings (Prometheus-specific)
+
+```text
+Query timeout: 60s
+Default editor: Builder (or Code)
+PromQL format: Use Prometheus labels
+```
+
+### Step 6: Test the Connection
+
+1. Scroll to the bottom of the page
+2. Click **Save & Test**
+3. You should see: "Data source is working"
+
+<Warning>
+If the test fails, check:
+- Network connectivity
+- URL correctness
+- Authentication credentials
+- Firewall rules
+- Data source service status
+</Warning>
+
+## Configuring Specific Data Sources
+
+### Prometheus
+
+<CodeGroup>
+```yaml Prometheus Config
+Name: Prometheus-Production
+URL: http://prometheus:9090
+Access: Server
+Scrape interval: 15s
+Query timeout: 60s
+HTTP Method: POST
+```
+
+```promql Example Query
+rate(http_requests_total[5m])
+```
+</CodeGroup>
+
+**Additional settings:**
+- **Scrape interval**: Match your Prometheus scrape interval (default: 15s)
+- **Query timeout**: Maximum time for query execution
+- **Custom query parameters**: Add custom parameters to all queries
+
+### Loki (Logs)
+
+```yaml Loki Config
+Name: Loki-Logs
+URL: http://loki:3100
+Access: Server
+Max lines: 1000
+```
+
+**Configuration options:**
+- **Max lines**: Limit number of log lines returned (default: 1000)
+- **Derived fields**: Extract values from logs for linking
+- **Timeout**: Query timeout in seconds
+
+<CodeGroup>
+```logql Basic Log Query
+{app="frontend", env="production"}
+```
+
+```logql Filtered Logs
+{app="frontend"} |= "error" | json | level="error"
+```
+</CodeGroup>
+
+### PostgreSQL
+
+```yaml PostgreSQL Config
+Name: PostgreSQL-Analytics
+Host: postgres.example.com:5432
+Database: analytics
+User: grafana
+Password: ********
+SSL Mode: require
+Version: 14.x
+```
+
+**TLS/SSL Settings:**
+- **SSL Mode**: disable, require, verify-ca, verify-full
+- **SSL Root Certificate**: Path to CA certificate
+- **SSL Client Certificate**: Path to client certificate
+- **SSL Client Key**: Path to client key
+
+<CodeGroup>
+```sql Time Series Query
+SELECT
+  time_column as time,
+  metric_name as metric,
+  value
+FROM metrics
+WHERE $__timeFilter(time_column)
+ORDER BY time
+```
+
+```sql Table Query
+SELECT
+  user_id,
+  username,
+  last_login
+FROM users
+WHERE active = true
+```
+</CodeGroup>
+
+### MySQL
+
+```yaml MySQL Config
+Name: MySQL-Database
+Host: mysql.example.com:3306
+Database: metrics
+User: grafana_reader
+Password: ********
+Max open connections: 100
+Max idle connections: 100
+Max connection lifetime: 14400
+```
+
+**Connection pooling:**
+- **Max open connections**: Maximum concurrent connections
+- **Max idle connections**: Maximum idle connections in pool
+- **Connection lifetime**: Maximum time a connection can be reused (seconds)
+
+### Elasticsearch
+
+```yaml Elasticsearch Config
+Name: Elasticsearch-Logs
+URL: https://elasticsearch.example.com:9200
+Access: Server
+Index name: logs-*
+Time field name: @timestamp
+Version: 8.x
+Min time interval: 10s
+```
+
+**Index settings:**
+- **Index name**: Pattern for log indices (supports wildcards)
+- **Time field name**: Field containing timestamps
+- **Max concurrent shard requests**: Limit concurrent requests
+- **Log message field**: Field containing log messages
+- **Log level field**: Field containing log levels
+
+### CloudWatch (AWS)
+
+```yaml CloudWatch Config
+Name: AWS-CloudWatch
+Authentication Provider: AWS SDK Default
+Default Region: us-east-1
+Namespaces: AWS/EC2, AWS/RDS, AWS/Lambda
+```
+
+**Authentication options:**
+- **AWS SDK Default**: Uses IAM role or environment credentials
+- **Access & Secret Key**: Manual credential entry
+- **Credentials file**: Path to AWS credentials file
+
+**IAM Policy Requirements:**
+
+```json IAM Policy
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Action": [
+        "cloudwatch:DescribeAlarmsForMetric",
+        "cloudwatch:GetMetricData",
+        "cloudwatch:GetMetricStatistics",
+        "cloudwatch:ListMetrics",
+        "ec2:DescribeInstances",
+        "ec2:DescribeRegions",
+        "logs:DescribeLogGroups",
+        "logs:GetLogEvents",
+        "logs:StartQuery",
+        "logs:StopQuery",
+        "logs:GetQueryResults"
+      ],
+      "Resource": "*"
+    }
+  ]
+}
+```
+
+### Tempo (Tracing)
+
+```yaml Tempo Config
+Name: Tempo-Tracing
+URL: http://tempo:3200
+Access: Server
+Trace to logs: Loki-Logs
+Trace to metrics: Prometheus-Production
+```
+
+**Integration settings:**
+- **Trace to logs**: Link traces to log data source
+- **Trace to metrics**: Link traces to metrics data source
+- **Search**: Configure TraceQL query editor
+- **Service graph**: Enable service graph visualization
+
+## Data Source Permissions
+
+<Info>
+Data source permissions are available in **Grafana Enterprise** and **Grafana Cloud**.
+</Info>
+
+By default, any organization member can query any data source. You can restrict access to specific users, teams, or service accounts.
+
+### Permission Levels
+
+- **Query**: Can query the data source
+- **Edit**: Can query and modify data source configuration
+- **Admin**: Full control including permissions management
+
+### Assigning Permissions
+
+1. Navigate to **Connections** → **Data sources**
+2. Click on the data source
+3. Go to the **Permissions** tab
+4. Click **Add a permission**
+5. Select:
+   - **User**, **Service Account**, **Team**, or **Role**
+   - The entity to grant permission
+   - Permission level (Query, Edit, or Admin)
+6. Click **Save**
+
+<CodeGroup>
+```text Permission Example
+Type: Team
+Team: DevOps
+Permission: Query
+```
+
+```text Multiple Permissions
+User: alice@example.com → Admin
+Team: Developers → Query
+Team: SRE → Edit
+Role: Viewer → (No access)
+```
+</CodeGroup>
+
+## Query Caching
+
+<Info>
+Query caching is available in **Grafana Enterprise** and **Grafana Cloud**.
+</Info>
+
+Caching reduces load on your data sources and speeds up dashboard loading.
+
+### Enable Caching
+
+1. Navigate to the data source settings
+2. Go to the **Cache** tab
+3. Click **Enable**
+4. Configure cache settings:
+
+```yaml Cache Settings
+Default TTL (queries): 300 seconds
+Default TTL (resources): 3600 seconds
+```
+
+**Cache backends:**
+- **In-memory**: Simple but limited by available RAM
+- **Redis**: Recommended for production
+- **Memcached**: Alternative distributed cache
+
+### Per-Panel Cache Override
+
+Override cache TTL for specific panels:
+
+1. Edit the panel
+2. Expand **Query options**
+3. Set **Cache timeout** in milliseconds
+
+```text
+Default cache: 300000ms (5 minutes)
+Panel override: 60000ms (1 minute)
+```
+
+## Data Source Variables
+
+Create dashboard variables that allow users to switch between data sources.
+
+1. In dashboard settings, click **Variables**
+2. Click **Add variable**
+3. Configure:
+
+```yaml Variable Config
+Name: datasource
+Type: Data source
+Type: Prometheus
+Instance name filter: .*-production$
+Multi-value: No
+```
+
+Use in queries by selecting `${datasource}` as the data source.
+
+## Provisioning Data Sources
+
+Automate data source configuration using YAML files.
+
+Create `/etc/grafana/provisioning/datasources/datasources.yaml`:
+
+```yaml datasources.yaml
+apiVersion: 1
+
+datasources:
+  - name: Prometheus
+    type: prometheus
+    access: proxy
+    url: http://prometheus:9090
+    isDefault: true
+    editable: false
+    jsonData:
+      httpMethod: POST
+      timeInterval: 15s
+    secureJsonData:
+      basicAuthPassword: ${PROMETHEUS_PASSWORD}
+
+  - name: Loki
+    type: loki
+    access: proxy
+    url: http://loki:3100
+    jsonData:
+      maxLines: 1000
+      derivedFields:
+        - name: traceID
+          matcherRegex: "traceID=(\\w+)"
+          url: "http://localhost:3000/explore?left=[\"now-1h\",\"now\",\"Tempo\",{\"query\":\"${__value.raw}\"}]"
+          datasourceUid: tempo
+
+  - name: PostgreSQL
+    type: postgres
+    url: postgres:5432
+    database: grafana
+    user: grafana
+    secureJsonData:
+      password: ${POSTGRES_PASSWORD}
+    jsonData:
+      sslmode: require
+      maxOpenConns: 100
+      maxIdleConns: 100
+      connMaxLifetime: 14400
+```
+
+<Warning>
+Store sensitive credentials in environment variables, not in plain text.
+</Warning>
+
+## Managing Data Sources
+
+### Edit Data Source
+
+1. Navigate to **Connections** → **Data sources**
+2. Click on the data source name
+3. Modify settings
+4. Click **Save & Test**
+
+### Delete Data Source
+
+1. Navigate to **Connections** → **Data sources**
+2. Click on the data source
+3. Scroll to the bottom
+4. Click **Delete**
+5. Confirm deletion
+
+<Warning>
+Deleting a data source will break any dashboards, alerts, or panels using it.
+</Warning>
+
+### Test Data Source
+
+Regularly test data source connectivity:
+
+1. Open the data source settings
+2. Click **Save & Test**
+3. Verify "Data source is working" message
+
+## Building Dashboards from Data Sources
+
+After configuring a data source, quickly create a dashboard:
+
+1. Navigate to **Connections** → **Data sources**
+2. Click on the data source
+3. Click **Build a dashboard**
+4. Grafana creates a new dashboard with the data source pre-selected
+
+## Best Practices
+
+<CardGroup cols={2}>
+  <Card title="Descriptive Names" icon="tag">
+    Use clear names like `Prometheus-Production` instead of `prom1`
+  </Card>
+  <Card title="Default Data Source" icon="star">
+    Set your most-used data source as default
+  </Card>
+  <Card title="Test Connections" icon="vial">
+    Always test data source connections after configuration
+  </Card>
+  <Card title="Secure Credentials" icon="lock">
+    Use environment variables for sensitive data
+  </Card>
+  <Card title="Connection Pooling" icon="diagram-project">
+    Configure appropriate pool sizes for SQL databases
+  </Card>
+  <Card title="Query Timeouts" icon="clock">
+    Set reasonable timeouts to prevent slow queries
+  </Card>
+</CardGroup>
+
+### Security Recommendations
+
+<AccordionGroup>
+  <Accordion title="Use Read-Only Credentials">
+    - Create dedicated database users with read-only permissions
+    - Limit access to only necessary databases/tables
+    - Avoid using admin or root credentials
+    
+    ```sql PostgreSQL Example
+    CREATE USER grafana_reader WITH PASSWORD 'secure_password';
+    GRANT SELECT ON ALL TABLES IN SCHEMA public TO grafana_reader;
+    ```
+  </Accordion>
+
+  <Accordion title="Enable TLS/SSL">
+    - Always use encrypted connections in production
+    - Verify certificate validity
+    - Use certificate pinning when possible
+    
+    ```yaml
+    SSL Mode: verify-full
+    CA Certificate: /path/to/ca.crt
+    Client Certificate: /path/to/client.crt
+    Client Key: /path/to/client.key
+    ```
+  </Accordion>
+
+  <Accordion title="Network Isolation">
+    - Place Grafana and data sources in the same network
+    - Use private IPs when possible
+    - Implement firewall rules
+    - Consider using VPN or SSH tunneling
+  </Accordion>
+
+  <Accordion title="Rotate Credentials">
+    - Regularly update data source passwords
+    - Use secrets management (Vault, AWS Secrets Manager)
+    - Implement credential rotation policies
+    - Monitor for unauthorized access
+  </Accordion>
+</AccordionGroup>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Create Dashboards" icon="chart-line" href="/getting-started/first-dashboard">
+    Build visualizations with your data
+  </Card>
+  <Card title="User Management" icon="users" href="/getting-started/user-management">
+    Control access to data sources
+  </Card>
+</CardGroup>
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="Connection Timeout">
+    **Symptoms:** "Connection timeout" or "Unable to connect"
+    
+    **Solutions:**
+    - Verify network connectivity: `ping data-source-host`
+    - Check firewall rules allow Grafana → Data source
+    - Increase timeout settings
+    - Verify data source service is running
+    - Check DNS resolution: `nslookup data-source-host`
+  </Accordion>
+
+  <Accordion title="Authentication Failed">
+    **Symptoms:** "401 Unauthorized" or "403 Forbidden"
+    
+    **Solutions:**
+    - Verify credentials are correct
+    - Check user has necessary permissions
+    - Confirm authentication method (Basic, Token, etc.)
+    - Review data source logs for errors
+    - Test credentials using curl or similar tool
+  </Accordion>
+
+  <Accordion title="TLS/SSL Errors">
+    **Symptoms:** "Certificate verify failed" or "SSL handshake failed"
+    
+    **Solutions:**
+    - Verify CA certificate is correct
+    - Check certificate expiration
+    - Ensure certificate hostname matches URL
+    - Add custom CA certificates to Grafana
+    - Try disabling certificate verification (non-production only)
+  </Accordion>
+
+  <Accordion title="Slow Queries">
+    **Symptoms:** Panels take long to load or timeout
+    
+    **Solutions:**
+    - Reduce time range in queries
+    - Optimize data source queries
+    - Enable query caching
+    - Increase query timeout
+    - Check data source performance
+    - Use query result transformations
+  </Accordion>
+
+  <Accordion title="No Data Returned">
+    **Symptoms:** Panel shows "No data"
+    
+    **Solutions:**
+    - Verify time range includes data
+    - Check query syntax
+    - Confirm data exists in data source
+    - Review data source permissions
+    - Enable query inspector to see actual query
+    - Check browser console for errors
+  </Accordion>
+</AccordionGroup>

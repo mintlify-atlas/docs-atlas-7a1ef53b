@@ -1,0 +1,279 @@
+---
+title: Docker Installation
+description: Run Grafana in Docker containers using Docker CLI or Docker Compose
+---
+
+# Docker Installation
+
+This guide covers installing and running Grafana using Docker containers. You can run Grafana using the Docker CLI or Docker Compose.
+
+## Docker Images
+
+Grafana provides official Docker images hosted on Docker Hub:
+
+- **Grafana Enterprise**: `grafana/grafana-enterprise`
+- **Grafana Open Source**: `grafana/grafana`
+
+<Note>
+Starting with Grafana 12.4.0, the `grafana/grafana-oss` repository will no longer be updated. Use `grafana/grafana` instead, which contains the same Grafana OSS images.
+</Note>
+
+The default images are built on Alpine Linux 3.23.3. All images run on port 3000 by default and use UID 472 for the `grafana` user.
+
+## Run Grafana with Docker CLI
+
+The simplest way to run Grafana is using the Docker CLI.
+
+<Steps>
+
+### Run Grafana container
+
+Run the latest stable version of Grafana Enterprise:
+
+```bash
+docker run -d -p 3000:3000 --name=grafana grafana/grafana-enterprise
+```
+
+This command:
+- Runs the container in detached mode (`-d`)
+- Publishes port 3000 to the host (`-p 3000:3000`)
+- Names the container `grafana` (`--name=grafana`)
+- Uses the latest Enterprise image
+
+### Access Grafana
+
+Open your browser and navigate to `http://localhost:3000`. Sign in with:
+
+- Username: `admin`
+- Password: `admin`
+
+You'll be prompted to change the password on first login.
+
+### Stop the container
+
+To stop the Grafana container:
+
+```bash
+docker stop grafana
+```
+
+</Steps>
+
+## Persistent Storage
+
+By default, Grafana data is stored inside the container and will be lost when the container is removed. Use Docker volumes or bind mounts to persist data.
+
+### Using Docker Volumes (Recommended)
+
+Docker volumes are managed by Docker and are the recommended approach for persistent storage.
+
+<Steps>
+
+### Create a volume
+
+```bash
+docker volume create grafana-storage
+```
+
+### Verify the volume
+
+```bash
+docker volume inspect grafana-storage
+```
+
+### Run Grafana with the volume
+
+```bash
+docker run -d -p 3000:3000 --name=grafana \
+  --volume grafana-storage:/var/lib/grafana \
+  grafana/grafana-enterprise
+```
+
+</Steps>
+
+### Using Bind Mounts
+
+Bind mounts map a host directory to the container. You must run the container with a user that has permission to access the directory.
+
+<Steps>
+
+### Create a data directory
+
+```bash
+mkdir data
+```
+
+### Run Grafana with bind mount
+
+```bash
+docker run -d -p 3000:3000 --name=grafana \
+  --user "$(id -u)" \
+  --volume "$PWD/data:/var/lib/grafana" \
+  grafana/grafana-enterprise
+```
+
+</Steps>
+
+## Environment Variables
+
+Configure Grafana using environment variables. All Grafana configuration options can be set using the `GF_<SectionName>_<KeyName>` format.
+
+### Common Configuration
+
+```bash
+docker run -d -p 3000:3000 --name=grafana \
+  -e "GF_LOG_LEVEL=debug" \
+  -e "GF_SERVER_ROOT_URL=http://my.grafana.server/" \
+  -e "GF_SECURITY_ADMIN_PASSWORD=secure_password" \
+  grafana/grafana-enterprise
+```
+
+### Environment Variables for Docker Secrets
+
+You can use Docker secrets by appending `__FILE` to environment variables:
+
+```bash
+docker run -d -p 3000:3000 --name=grafana \
+  -e "GF_SECURITY_ADMIN_PASSWORD__FILE=/run/secrets/admin_password" \
+  grafana/grafana-enterprise
+```
+
+## Install Plugins
+
+Install plugins at container startup using the `GF_PLUGINS_PREINSTALL` environment variable.
+
+### Install from plugin catalog
+
+```bash
+docker run -d -p 3000:3000 --name=grafana \
+  -e "GF_PLUGINS_PREINSTALL=grafana-clock-panel,grafana-simple-json-datasource" \
+  grafana/grafana-enterprise
+```
+
+### Install specific version
+
+```bash
+docker run -d -p 3000:3000 --name=grafana \
+  -e "GF_PLUGINS_PREINSTALL=grafana-clock-panel@1.0.1" \
+  grafana/grafana-enterprise
+```
+
+### Install from custom URL
+
+```bash
+docker run -d -p 3000:3000 --name=grafana \
+  -e "GF_PLUGINS_PREINSTALL=custom-plugin@@https://example.com/plugin.zip" \
+  grafana/grafana-enterprise
+```
+
+## Run Grafana with Docker Compose
+
+Docker Compose simplifies multi-container deployments using YAML configuration files.
+
+### Basic Configuration
+
+Create a `docker-compose.yaml` file:
+
+```yaml
+services:
+  grafana:
+    image: grafana/grafana-enterprise
+    container_name: grafana
+    restart: unless-stopped
+    ports:
+      - '3000:3000'
+```
+
+Start Grafana:
+
+```bash
+docker compose up -d
+```
+
+Stop Grafana:
+
+```bash
+docker compose down
+```
+
+### With Persistent Storage
+
+```yaml
+services:
+  grafana:
+    image: grafana/grafana-enterprise
+    container_name: grafana
+    restart: unless-stopped
+    ports:
+      - '3000:3000'
+    volumes:
+      - grafana-storage:/var/lib/grafana
+
+volumes:
+  grafana-storage: {}
+```
+
+### With Environment Variables
+
+```yaml
+services:
+  grafana:
+    image: grafana/grafana-enterprise
+    container_name: grafana
+    restart: unless-stopped
+    environment:
+      - GF_SERVER_ROOT_URL=http://my.grafana.server/
+      - GF_PLUGINS_PREINSTALL=grafana-clock-panel
+      - GF_LOG_LEVEL=info
+    ports:
+      - '3000:3000'
+    volumes:
+      - grafana-storage:/var/lib/grafana
+
+volumes:
+  grafana-storage: {}
+```
+
+### With Bind Mounts
+
+```yaml
+services:
+  grafana:
+    image: grafana/grafana-enterprise
+    container_name: grafana
+    restart: unless-stopped
+    user: '0'
+    ports:
+      - '3000:3000'
+    volumes:
+      - '$PWD/data:/var/lib/grafana'
+```
+
+## Container Configuration Paths
+
+The Grafana Docker image uses the following paths:
+
+| Path | Description |
+|------|-------------|
+| `/etc/grafana/grafana.ini` | Configuration file |
+| `/var/lib/grafana` | Data directory (dashboards, users, etc.) |
+| `/var/log/grafana` | Log directory |
+| `/usr/share/grafana` | Installation directory |
+| `/var/lib/grafana/plugins` | Plugins directory |
+| `/etc/grafana/provisioning` | Provisioning directory |
+
+## Entry Point Script
+
+The Docker image uses `/run.sh` as the entry point, which:
+
+1. Validates file permissions for configuration and data directories
+2. Processes environment variables ending in `__FILE` for Docker secrets
+3. Configures AWS credentials if `GF_AWS_PROFILES` is set
+4. Starts the Grafana server with appropriate configuration flags
+
+## Next Steps
+
+- Configure Grafana data sources
+- Set up authentication
+- Install additional plugins
+- Configure provisioning for dashboards and data sources

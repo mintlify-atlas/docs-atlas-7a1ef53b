@@ -1,0 +1,380 @@
+---
+title: Debian/Ubuntu Installation
+description: Install Grafana on Debian or Ubuntu Linux using APT repository or DEB packages
+---
+
+# Debian/Ubuntu Installation
+
+This guide covers installing Grafana on Debian or Ubuntu Linux systems using the APT repository or standalone DEB packages.
+
+## Installation Methods
+
+You can install Grafana on Debian/Ubuntu using:
+
+- **APT repository** (recommended): Automatic updates via `apt-get update`
+- **DEB package**: Manual installation from downloaded package
+- **Standalone binary**: Manual installation from tarball
+
+## Install from APT Repository
+
+Installing from the APT repository enables automatic updates when you run `apt-get update`.
+
+### Available Repositories
+
+| Edition | Package | Repository |
+|---------|---------|------------|
+| Grafana Enterprise | `grafana-enterprise` | `https://apt.grafana.com stable main` |
+| Grafana Enterprise (Beta) | `grafana-enterprise` | `https://apt.grafana.com beta main` |
+| Grafana OSS | `grafana` | `https://apt.grafana.com stable main` |
+| Grafana OSS (Beta) | `grafana` | `https://apt.grafana.com beta main` |
+
+<Note>
+Grafana Enterprise is the recommended edition. It's free and includes all OSS features, with the option to upgrade to the full Enterprise feature set.
+</Note>
+
+<Steps>
+
+### Install prerequisite packages
+
+```bash
+sudo apt-get install -y apt-transport-https wget gnupg
+```
+
+### Import the GPG key
+
+```bash
+sudo mkdir -p /etc/apt/keyrings
+sudo wget -O /etc/apt/keyrings/grafana.asc https://apt.grafana.com/gpg-full.key
+sudo chmod 644 /etc/apt/keyrings/grafana.asc
+```
+
+### Add the repository
+
+For stable releases:
+
+```bash
+echo "deb [signed-by=/etc/apt/keyrings/grafana.asc] https://apt.grafana.com stable main" | \
+  sudo tee -a /etc/apt/sources.list.d/grafana.list
+```
+
+For beta releases:
+
+```bash
+echo "deb [signed-by=/etc/apt/keyrings/grafana.asc] https://apt.grafana.com beta main" | \
+  sudo tee -a /etc/apt/sources.list.d/grafana.list
+```
+
+### Update package list
+
+```bash
+sudo apt-get update
+```
+
+### Install Grafana
+
+For Grafana OSS:
+
+```bash
+sudo apt-get install grafana
+```
+
+For Grafana Enterprise:
+
+```bash
+sudo apt-get install grafana-enterprise
+```
+
+</Steps>
+
+## Install from DEB Package
+
+Manual installation using DEB packages requires you to manually update Grafana for each new version.
+
+<Steps>
+
+### Download the package
+
+Visit the [Grafana download page](https://grafana.com/grafana/download) and:
+
+1. Select your Grafana version
+2. Choose your Edition (Enterprise or Open Source)
+3. Select the Linux or ARM tab
+4. Copy the download URL
+
+### Install the package
+
+```bash
+sudo apt-get install -y adduser libfontconfig1 musl
+wget <deb-package-url>
+sudo dpkg -i grafana_<version>_amd64.deb
+```
+
+Example:
+
+```bash
+wget https://dl.grafana.com/enterprise/release/grafana-enterprise_11.0.0_amd64.deb
+sudo dpkg -i grafana-enterprise_11.0.0_amd64.deb
+```
+
+</Steps>
+
+## Install as Standalone Binary
+
+For manual installation with full control over file locations:
+
+<Steps>
+
+### Download and extract
+
+Download the tarball from the [Grafana download page](https://grafana.com/grafana/download) and extract it:
+
+```bash
+wget <tarball-url>
+tar -zxvf grafana-<version>.linux-amd64.tar.gz
+```
+
+### Create Grafana user
+
+```bash
+sudo useradd -r -s /bin/false grafana
+```
+
+### Move to installation directory
+
+```bash
+sudo mv grafana-<version> /usr/local/grafana
+```
+
+### Set ownership
+
+```bash
+sudo chown -R grafana:users /usr/local/grafana
+```
+
+### Create systemd service file
+
+```bash
+sudo touch /etc/systemd/system/grafana-server.service
+```
+
+Add the following content:
+
+```ini
+[Unit]
+Description=Grafana Server
+After=network.target
+
+[Service]
+Type=simple
+User=grafana
+Group=users
+ExecStart=/usr/local/grafana/bin/grafana server --config=/usr/local/grafana/conf/grafana.ini --homepath=/usr/local/grafana
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target
+```
+
+### Initialize data directory
+
+Manually start Grafana once to create the data directory:
+
+```bash
+/usr/local/grafana/bin/grafana server --homepath /usr/local/grafana
+```
+
+Press `Ctrl+C` to stop, then update ownership:
+
+```bash
+sudo chown -R grafana:users /usr/local/grafana
+```
+
+### Enable and start service
+
+```bash
+sudo systemctl daemon-reload
+sudo systemctl enable grafana-server
+sudo systemctl start grafana-server
+```
+
+</Steps>
+
+## Start Grafana Server
+
+### Using systemd
+
+Start the Grafana server:
+
+```bash
+sudo systemctl start grafana-server
+```
+
+Enable Grafana to start at boot:
+
+```bash
+sudo systemctl enable grafana-server
+```
+
+Check service status:
+
+```bash
+sudo systemctl status grafana-server
+```
+
+### Using init.d
+
+Start Grafana:
+
+```bash
+sudo service grafana-server start
+```
+
+Enable at boot:
+
+```bash
+sudo update-rc.d grafana-server defaults
+```
+
+## Configuration
+
+After installation, Grafana uses these default paths:
+
+| Path | Description |
+|------|-------------|
+| `/etc/grafana/grafana.ini` | Configuration file |
+| `/var/lib/grafana` | Data directory (SQLite database, plugins) |
+| `/var/log/grafana` | Log files |
+| `/usr/share/grafana` | Installation directory |
+| `/etc/grafana/provisioning` | Provisioning directory |
+| `/etc/default/grafana-server` | Environment variables |
+
+### Environment Variables File
+
+The systemd service reads environment variables from `/etc/default/grafana-server`:
+
+```bash
+CONF_FILE=/etc/grafana/grafana.ini
+DATA_DIR=/var/lib/grafana
+LOG_DIR=/var/log/grafana
+PID_FILE_DIR=/run/grafana
+PLUGINS_DIR=/var/lib/grafana/plugins
+PROVISIONING_CFG_DIR=/etc/grafana/provisioning
+```
+
+## Systemd Service Configuration
+
+The Grafana systemd service includes security hardening:
+
+- Runs as non-root `grafana` user (UID 472)
+- Capability restrictions with `CapabilityBoundingSet=`
+- Protected system directories
+- Restricted system calls
+- File open limit: 10,000
+- Stop timeout: 20 seconds
+
+## Access Grafana
+
+After starting the server, access Grafana:
+
+1. Open your browser to `http://localhost:3000`
+2. Sign in with default credentials:
+   - Username: `admin`
+   - Password: `admin`
+3. Change the password when prompted
+
+## Uninstall Grafana
+
+<Steps>
+
+### Stop the service
+
+For systemd:
+
+```bash
+sudo systemctl stop grafana-server
+```
+
+For init.d:
+
+```bash
+sudo service grafana-server stop
+```
+
+### Remove the package
+
+For Grafana OSS:
+
+```bash
+sudo apt-get remove grafana
+```
+
+For Grafana Enterprise:
+
+```bash
+sudo apt-get remove grafana-enterprise
+```
+
+### Remove the repository (optional)
+
+```bash
+sudo rm -i /etc/apt/sources.list.d/grafana.list
+```
+
+### Remove data (optional)
+
+```bash
+sudo rm -rf /var/lib/grafana
+sudo rm -rf /var/log/grafana
+sudo rm -rf /etc/grafana
+```
+
+</Steps>
+
+## Troubleshooting
+
+### View logs
+
+```bash
+sudo journalctl -u grafana-server -f
+```
+
+Or check log files:
+
+```bash
+sudo tail -f /var/log/grafana/grafana.log
+```
+
+### Check service status
+
+```bash
+sudo systemctl status grafana-server
+```
+
+### Verify installation
+
+```bash
+grafana-server -v
+```
+
+### Port already in use
+
+If port 3000 is already in use, edit `/etc/grafana/grafana.ini`:
+
+```ini
+[server]
+http_port = 3001
+```
+
+Restart Grafana:
+
+```bash
+sudo systemctl restart grafana-server
+```
+
+## Next Steps
+
+- Configure data sources
+- Set up authentication (LDAP, OAuth, SAML)
+- Configure SMTP for email notifications
+- Set up provisioning for dashboards and data sources
+- Configure an external database (MySQL or PostgreSQL)

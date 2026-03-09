@@ -1,0 +1,106 @@
+---
+title: Contributing guide
+description: Learn how to contribute to Grafana through code, documentation, and non-code contributions
+---
+
+# Contributing guide
+
+Thank you for your interest in contributing to Grafana! We welcome all people who want to contribute in a healthy and constructive manner within our community.
+
+## Code of Conduct
+
+All participants must adhere to the [Code of Conduct](https://github.com/grafana/grafana/blob/main/CODE_OF_CONDUCT.md). We pledge to make participation in our project a harassment-free experience for everyone, regardless of age, body size, disability, ethnicity, gender identity and expression, level of experience, nationality, personal appearance, race, religion, or sexual identity and orientation.
+
+## Getting started
+
+Before making your first contribution:
+
+1. **Set up your development environment** - Follow the [developer guide](https://github.com/grafana/grafana/blob/main/contribute/developer-guide.md)
+2. **Read the style guides** - Familiarize yourself with our [frontend](code-style#frontend-style-guide) and [backend](code-style#backend-style-guide) style guides
+3. **Understand our workflow** - Review our [pull request guidelines](pull-requests)
+4. **Sign the CLA** - You'll need to [sign our Contributor License Agreement](https://grafana.com/docs/grafana/latest/developers/cla/) before we can accept your pull request
+
+## Ways to contribute
+
+### Code contributions
+
+Browse [issues](https://github.com/grafana/grafana/issues) to find something to work on. You can filter by [help wanted](https://github.com/grafana/grafana/issues?q=is%3Aopen+is%3Aissue+label%3A%22help+wanted%22) label.
+
+**Requirements:**
+- Write or update tests for your changes (see [Testing guidelines](testing))
+- Adhere to code style guidelines (see [Code style](code-style))
+- Create a clear, descriptive pull request (see [Pull request guidelines](pull-requests))
+
+### Plugin development
+
+Grafana plugins let you extend the platform with new data sources, panels, and more:
+
+1. Read the [plugin development guide](https://grafana.com/developers/plugin-tools)
+2. Scaffold your plugin using the recommended tools
+3. Develop and test your plugin locally
+4. Follow best practices for code style, testing, and documentation
+5. Publish your plugin or submit it for review
+
+### Non-code contributions
+
+You can help even if you don't write code:
+
+- **Report bugs** - Use the [bug report template](https://github.com/grafana/grafana/issues/new?template=0-bug-report.yaml) and include steps to reproduce
+- **Request features** - Submit a [feature request](https://github.com/grafana/grafana/issues/new?template=1-feature_requests.md)
+- **Improve documentation** - Follow the [documentation contribution guide](https://github.com/grafana/grafana/blob/main/contribute/documentation)
+- **Triage issues** - Help by [reviewing, labeling, and clarifying issues](https://github.com/grafana/grafana/blob/main/contribute/triage-issues.md)
+- **Report security issues** - Follow our [security policy](https://github.com/grafana/grafana/security/policy)
+
+<Note>
+We do not currently accept contributions for translations. Please do not submit pull requests translating `grafana.json` files. We do accept contributions to mark up phrases for translation.
+</Note>
+
+## Communication channels
+
+Use the right channel for your needs:
+
+- **[GitHub issues](https://github.com/grafana/grafana/issues)** - For reproducible bugs, actionable feature requests, and code/docs changes via pull requests
+- **[Grafana community forums](https://community.grafana.com/)** - For questions, troubleshooting, best practices, and early idea discussion
+- **[Grafana Community Slack](https://slack.grafana.com)** - For quick, time-sensitive chats and networking
+- **Not sure where to start?** - Start with a forum topic; maintainers will redirect you if needed
+
+## Development workflow
+
+Grafana uses trunk-based development:
+
+- Main and release branches must always build without failure
+- Branches should be merged often
+- Larger changes should be activated with feature flags until ready
+- Long-lived development branches should be avoided
+
+### Branch structure
+
+- **MAJOR releases** - Based on main
+- **MINOR releases** - Based on main
+- **PATCH releases** - Split from the relevant MINOR release branch
+
+## Release cadence
+
+- **MAJOR**: Yearly
+- **MINOR**: Every 4-6 weeks
+- **PATCH**: As needed
+
+## Governance
+
+### Merging pull requests
+
+Different requirements apply based on PR size and complexity:
+
+- **Every merge** - Approved by at least one team member
+- **Non-trivial changes** - Approved by at least two team members, or one subsystem maintainer
+- **Significant changes** - Approved by at least two team members AND the relevant subsystem maintainer
+
+Team members contributing substantially to a PR must not count against review requirements.
+
+## Community resources
+
+- **[Grafana Champions program](https://grafana.com/community/champions/)** - Recognition for active contributors
+- **[Forums](https://community.grafana.com/)** - Knowledge base and community support
+- **[Meetups](http://www.grafana.com/g/communityengcamp-githubtomeetup)** - Join local Grafana & Friends groups
+- **[YouTube](http://www.grafana.com/g/communityengcamp-githubtoyoutube)** - Tutorials and getting started videos
+- **[Contributor Survey](https://gra.fan/ome)** - Share your feedback on the contributor experience

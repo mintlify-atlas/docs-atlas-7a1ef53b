@@ -1,0 +1,555 @@
+---
+title: Gauge Panel
+description: Display values with radial and linear gauges
+---
+
+The Gauge panel displays values using radial (circular or arc) or linear gauges with extensive customization options for appearance and behavior.
+
+## Overview
+
+The Gauge panel is ideal for:
+
+- Visualizing values within a min/max range
+- Displaying KPIs with threshold markers
+- Showing progress or capacity metrics
+- Creating dashboard health indicators
+
+<Note>
+Grafana has two gauge implementations. The new gauge (v2) is enabled via the `newGauge` feature toggle. This documentation covers the v2 implementation.
+</Note>
+
+## Panel Options
+
+The Gauge panel is defined in `public/app/plugins/panel/gauge/v2/module.tsx:14`:
+
+```typescript
+export const plugin = new PanelPlugin<Options>(GaugePanel)
+  .useFieldConfig({})
+  .setPanelOptions((builder) => {
+    addStandardDataReduceOptions(builder);
+    // ... gauge-specific options
+  })
+  .setSuggestionsSupplier(gaugeSuggestionsSupplier)
+  .setMigrationHandler(gaugePanelMigrationHandler, shouldMigrateGauge)
+  .setPanelChangeHandler(gaugePanelChangedHandler);
+```
+
+### Options Interface
+
+From `public/app/plugins/panel/gauge/panelcfg.gen.ts:27`:
+
+```typescript
+interface Options extends SingleStatBaseOptions {
+  barShape: 'flat' | 'rounded';
+  barWidthFactor: number;
+  effects: GaugePanelEffects;
+  endpointMarker?: 'point' | 'glow' | 'none';
+  minVizHeight: number;
+  minVizWidth: number;
+  neutral?: number;
+  segmentCount: number;
+  segmentSpacing: number;
+  shape: 'circle' | 'gauge';
+  showThresholdLabels: boolean;
+  showThresholdMarkers: boolean;
+  sizing: BarGaugeSizing;
+  sparkline?: boolean;
+  textMode?: 'auto' | 'value_and_name' | 'value' | 'name' | 'none';
+}
+```
+
+### Default Options
+
+From `public/app/plugins/panel/gauge/panelcfg.gen.ts:45`:
+
+```typescript
+const defaultOptions: Partial<Options> = {
+  barShape: 'flat',
+  barWidthFactor: 0.5,
+  effects: {},
+  endpointMarker: 'point',
+  minVizHeight: 75,
+  minVizWidth: 75,
+  segmentCount: 1,
+  segmentSpacing: 0.3,
+  shape: 'gauge',
+  showThresholdLabels: false,
+  showThresholdMarkers: true,
+  sizing: BarGaugeSizing.Auto,
+  sparkline: true,
+  textMode: 'auto',
+};
+```
+
+## Gauge Configuration
+
+### Shape
+
+Choose gauge style (from `public/app/plugins/panel/gauge/v2/module.tsx:21`):
+
+```typescript
+enum GaugeShape {
+  Circle = 'circle',  // Full circle (360°)
+  Gauge = 'gauge'     // Arc/semicircle (180°)
+}
+```
+
+### Orientation
+
+Control layout direction:
+
+```typescript
+enum VizOrientation {
+  Auto = 'auto',         // Automatic based on panel size
+  Horizontal = 'horizontal',
+  Vertical = 'vertical'
+}
+```
+
+### Sizing
+
+From `public/app/plugins/panel/gauge/v2/module.tsx:37`:
+
+```typescript
+enum BarGaugeSizing {
+  Auto = 'auto',    // Automatic sizing
+  Manual = 'manual' // Manual width/height control
+}
+```
+
+When using manual sizing:
+
+- **Vertical orientation**: Set `minVizWidth` (0-600px)
+- **Horizontal orientation**: Set `minVizHeight` (0-600px)
+
+### Bar Width Factor
+
+Control the thickness of the gauge bar (from `public/app/plugins/panel/gauge/v2/module.tsx:79`):
+
+```typescript
+barWidthFactor: number  // 0.1 to 1.0 (default: 0.5)
+```
+
+### Segments
+
+Divide the gauge into discrete segments (from `public/app/plugins/panel/gauge/v2/module.tsx:91`):
+
+```typescript
+segmentCount: number  // 1 to 100 (default: 1)
+segmentSpacing: number  // 0 to 1 (default: 0.3)
+```
+
+<Note>
+Segment spacing is only visible when `segmentCount > 1`.
+</Note>
+
+### Bar Shape
+
+Control bar appearance (from `public/app/plugins/panel/gauge/v2/module.tsx:116`):
+
+```typescript
+enum BarShape {
+  Flat = 'flat',        // Flat ends
+  Rounded = 'rounded'   // Rounded ends
+}
+```
+
+<Note>
+Bar shape only applies when `segmentCount === 1`.
+</Note>
+
+### Endpoint Marker
+
+Add a marker at the gauge endpoint (from `public/app/plugins/panel/gauge/v2/module.tsx:130`):
+
+```typescript
+enum EndpointMarker {
+  Point = 'point',  // Circular point
+  Glow = 'glow',    // Glowing effect (dark mode only)
+  None = 'none'     // No marker
+}
+```
+
+<Warning>
+Endpoint marker only appears when `barShape === 'rounded'` and `segmentCount === 1`.
+</Warning>
+
+## Visual Effects
+
+From `public/app/plugins/panel/gauge/panelcfg.gen.ts:15`:
+
+```typescript
+interface GaugePanelEffects {
+  barGlow?: boolean;     // Glow effect on bar
+  centerGlow?: boolean;  // Glow effect at center
+  gradient?: boolean;    // Gradient fill
+}
+
+const defaultGaugePanelEffects: Partial<GaugePanelEffects> = {
+  barGlow: false,
+  centerGlow: false,
+  gradient: true,
+};
+```
+
+Configured via custom editor at `public/app/plugins/panel/gauge/v2/module.tsx:195`.
+
+## Display Options
+
+### Text Mode
+
+Control text display (from `public/app/plugins/panel/gauge/v2/module.tsx:146`):
+
+```typescript
+enum TextMode {
+  Auto = 'auto',
+  ValueAndName = 'value_and_name',
+  Value = 'value',
+  Name = 'name',
+  None = 'none'
+}
+```
+
+### Neutral Value
+
+Set a neutral point for the gauge (from `public/app/plugins/panel/gauge/v2/module.tsx:162`):
+
+```typescript
+neutral?: number  // If not set, uses min value as neutral
+```
+
+### Sparkline
+
+Show a mini time series chart (from `public/app/plugins/panel/gauge/v2/module.tsx:173`):
+
+```typescript
+sparkline?: boolean  // Default: true
+```
+
+### Threshold Display
+
+From `public/app/plugins/panel/gauge/v2/module.tsx:180`:
+
+```typescript
+showThresholdMarkers: boolean  // Show threshold lines (default: true)
+showThresholdLabels: boolean   // Show threshold values (default: false)
+```
+
+### Text Size
+
+Configure text sizing:
+
+```typescript
+interface TextSize {
+  titleSize?: number;   // Title font size
+  valueSize?: number;   // Value font size
+}
+```
+
+## Panel JSON Examples
+
+### Basic Gauge
+
+```json
+{
+  "type": "gauge",
+  "title": "CPU Usage",
+  "gridPos": { "x": 0, "y": 0, "w": 6, "h": 6 },
+  "targets": [
+    {
+      "datasource": { "type": "prometheus" },
+      "expr": "avg(cpu_usage_percent)"
+    }
+  ],
+  "options": {
+    "shape": "gauge",
+    "orientation": "auto",
+    "sizing": "auto",
+    "barWidthFactor": 0.6,
+    "segmentCount": 1,
+    "barShape": "rounded",
+    "endpointMarker": "point",
+    "showThresholdMarkers": true,
+    "showThresholdLabels": false,
+    "sparkline": true,
+    "textMode": "value_and_name",
+    "effects": {
+      "gradient": true,
+      "barGlow": false,
+      "centerGlow": false
+    },
+    "reduceOptions": {
+      "values": false,
+      "calcs": ["lastNotNull"]
+    }
+  },
+  "fieldConfig": {
+    "defaults": {
+      "unit": "percent",
+      "min": 0,
+      "max": 100,
+      "thresholds": {
+        "mode": "absolute",
+        "steps": [
+          { "value": 0, "color": "green" },
+          { "value": 70, "color": "yellow" },
+          { "value": 90, "color": "red" }
+        ]
+      }
+    },
+    "overrides": []
+  }
+}
+```
+
+### Segmented Gauge
+
+```json
+{
+  "type": "gauge",
+  "title": "Memory Usage",
+  "options": {
+    "shape": "circle",
+    "segmentCount": 20,
+    "segmentSpacing": 0.1,
+    "barWidthFactor": 0.4,
+    "showThresholdMarkers": false,
+    "showThresholdLabels": true,
+    "sparkline": false,
+    "textMode": "value",
+    "effects": {
+      "gradient": false,
+      "barGlow": true
+    }
+  },
+  "fieldConfig": {
+    "defaults": {
+      "unit": "bytes",
+      "min": 0,
+      "max": 17179869184,
+      "thresholds": {
+        "mode": "absolute",
+        "steps": [
+          { "value": 0, "color": "blue" },
+          { "value": 12884901888, "color": "yellow" },
+          { "value": 15032385536, "color": "red" }
+        ]
+      }
+    }
+  }
+}
+```
+
+### Gauge with Neutral Value
+
+```json
+{
+  "type": "gauge",
+  "title": "Temperature Delta",
+  "options": {
+    "shape": "gauge",
+    "neutral": 0,
+    "barShape": "rounded",
+    "endpointMarker": "glow",
+    "showThresholdLabels": true,
+    "textMode": "value_and_name"
+  },
+  "fieldConfig": {
+    "defaults": {
+      "unit": "celsius",
+      "min": -20,
+      "max": 20,
+      "thresholds": {
+        "mode": "absolute",
+        "steps": [
+          { "value": -20, "color": "blue" },
+          { "value": -10, "color": "light-blue" },
+          { "value": 0, "color": "green" },
+          { "value": 10, "color": "orange" },
+          { "value": 15, "color": "red" }
+        ]
+      }
+    }
+  }
+}
+```
+
+### Multiple Gauges with Manual Sizing
+
+```json
+{
+  "type": "gauge",
+  "title": "System Metrics",
+  "options": {
+    "shape": "gauge",
+    "orientation": "vertical",
+    "sizing": "manual",
+    "minVizWidth": 100,
+    "barWidthFactor": 0.5,
+    "showThresholdMarkers": true,
+    "textMode": "value_and_name",
+    "reduceOptions": {
+      "values": false,
+      "calcs": ["lastNotNull"]
+    }
+  },
+  "targets": [
+    {
+      "datasource": { "type": "prometheus" },
+      "expr": "cpu_usage_percent",
+      "legendFormat": "CPU"
+    },
+    {
+      "datasource": { "type": "prometheus" },
+      "expr": "memory_usage_percent",
+      "legendFormat": "Memory"
+    },
+    {
+      "datasource": { "type": "prometheus" },
+      "expr": "disk_usage_percent",
+      "legendFormat": "Disk"
+    }
+  ],
+  "fieldConfig": {
+    "defaults": {
+      "unit": "percent",
+      "min": 0,
+      "max": 100,
+      "thresholds": {
+        "mode": "absolute",
+        "steps": [
+          { "value": 0, "color": "green" },
+          { "value": 70, "color": "yellow" },
+          { "value": 90, "color": "red" }
+        ]
+      }
+    },
+    "overrides": []
+  }
+}
+```
+
+## Data Reduce Options
+
+Like the Stat panel, the Gauge panel uses reduce options to convert multiple values to a single displayable value:
+
+```typescript
+interface ReduceDataOptions {
+  values: boolean;    // Show all values or reduce to one
+  fields?: string;    // Field name pattern
+  limit?: number;     // Max number of values
+  calcs: string[];    // Reducer functions
+}
+```
+
+Common reducers:
+- `lastNotNull` - Last non-null value (most common)
+- `last` - Last value
+- `mean` - Average
+- `min` - Minimum
+- `max` - Maximum
+- `sum` - Sum
+
+## Advanced Features
+
+### Thresholds and Colors
+
+Gauges use thresholds to determine colors. Define multiple threshold steps:
+
+```json
+{
+  "thresholds": {
+    "mode": "absolute",
+    "steps": [
+      { "value": 0, "color": "green" },
+      { "value": 50, "color": "yellow" },
+      { "value": 75, "color": "orange" },
+      { "value": 90, "color": "red" }
+    ]
+  }
+}
+```
+
+Or use percentage mode:
+
+```json
+{
+  "thresholds": {
+    "mode": "percentage",
+    "steps": [
+      { "value": 0, "color": "green" },
+      { "value": 50, "color": "yellow" },
+      { "value": 80, "color": "red" }
+    ]
+  }
+}
+```
+
+### Field Overrides
+
+Apply different settings to specific gauges:
+
+```json
+{
+  "fieldConfig": {
+    "defaults": { /* default config */ },
+    "overrides": [
+      {
+        "matcher": { "id": "byName", "options": "CPU" },
+        "properties": [
+          { "id": "max", "value": 100 },
+          { "id": "unit", "value": "percent" }
+        ]
+      },
+      {
+        "matcher": { "id": "byName", "options": "Temperature" },
+        "properties": [
+          { "id": "min", "value": 0 },
+          { "id": "max", "value": 100 },
+          { "id": "unit", "value": "celsius" },
+          {
+            "id": "thresholds",
+            "value": {
+              "mode": "absolute",
+              "steps": [
+                { "value": 0, "color": "blue" },
+                { "value": 60, "color": "green" },
+                { "value": 80, "color": "red" }
+              ]
+            }
+          }
+        ]
+      }
+    ]
+  }
+}
+```
+
+## Implementation Details
+
+The Gauge panel uses the new v2 implementation when the `newGauge` feature toggle is enabled (from `public/app/plugins/panel/gauge/module.tsx:6`):
+
+```typescript
+export const plugin = config.featureToggles.newGauge ? pluginV2 : pluginV1;
+```
+
+Key files:
+- `public/app/plugins/panel/gauge/v2/module.tsx` - Plugin definition (v2)
+- `public/app/plugins/panel/gauge/v2/GaugePanel.tsx` - Component implementation
+- `public/app/plugins/panel/gauge/v2/EffectsEditor.tsx` - Visual effects editor
+- `public/app/plugins/panel/gauge/panelcfg.gen.ts` - Generated types
+
+<Note>
+The Gauge panel extends `SingleStatBaseOptions`, sharing common functionality with Stat and Bar Gauge panels.
+</Note>
+
+## Related Resources
+
+<CardGroup cols={2}>
+  <Card title="Stat Panel" icon="gauge" href="/visualization/stat-panel">
+    Display single values with sparklines
+  </Card>
+  <Card title="Graph Panel" icon="chart-line" href="/visualization/graph-panel">
+    Visualize time series data
+  </Card>
+</CardGroup>

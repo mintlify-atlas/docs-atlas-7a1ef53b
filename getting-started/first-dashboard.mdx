@@ -1,0 +1,496 @@
+---
+title: 'Creating Your First Dashboard'
+description: 'Step-by-step guide to building your first Grafana dashboard with panels and visualizations'
+---
+
+# Creating Your First Dashboard
+
+Dashboards are the heart of Grafana. They allow you to visualize your data through customizable panels that display metrics, logs, and traces from your data sources.
+
+This guide walks you through creating your first dashboard from scratch.
+
+## Prerequisites
+
+Before you begin:
+
+- Grafana is installed and running
+- You have at least one data source configured (we'll use TestData for this guide)
+- You understand the query language of your data source
+- You have the appropriate permissions (Editor or Admin role)
+
+## Understanding Dashboards
+
+A **dashboard** is a collection of **panels** arranged in a grid layout. Each panel:
+
+- Queries data from one or more data sources
+- Displays data using visualizations (graphs, tables, gauges, etc.)
+- Can be resized, moved, and customized
+- Updates automatically based on time ranges and refresh intervals
+
+## Creating a New Dashboard
+
+### Step 1: Open the Dashboard Creation Interface
+
+1. Click **Dashboards** in the left sidebar
+2. Click **New** → **New Dashboard**
+3. You'll see an empty dashboard canvas with an **Add** panel option
+
+<Frame>
+  <img src="/images/dashboard-empty.png" alt="Empty dashboard canvas" />
+</Frame>
+
+### Step 2: Add Your First Panel
+
+Panels are the building blocks of dashboards.
+
+1. Click **+ Add** in the edit pane or drag a panel onto the dashboard
+2. Click **Configure** on the new panel to open the panel editor
+
+The panel editor has three main sections:
+
+- **Query** tab: Define what data to fetch
+- **Visualization** selector: Choose how to display the data
+- **Panel options**: Customize titles, descriptions, and settings
+
+### Step 3: Configure Your Data Query
+
+Let's create a simple time series query using the TestData data source.
+
+#### Select Data Source
+
+1. In the **Queries** tab, click the **Data source** dropdown
+2. Select **TestData DB** (built-in test data source)
+
+#### Build the Query
+
+1. In the **Scenario** field, select **Random Walk**
+2. Click **Refresh** to preview the data
+
+You should see a line graph with random walk data.
+
+<CodeGroup>
+```text Query Settings
+Data source: TestData DB
+Scenario: Random Walk
+Alias: Temperature
+```
+
+```json Advanced Query Example
+{
+  "scenarioId": "random_walk",
+  "alias": "Temperature",
+  "seriesCount": 1,
+  "spread": 10,
+  "noise": 5
+}
+```
+</CodeGroup>
+
+### Step 4: Choose a Visualization
+
+Grafana suggests visualizations based on your data, but you can choose any type.
+
+#### Available Visualizations
+
+<CardGroup cols={3}>
+  <Card title="Time Series" icon="chart-line">
+    Line, bar, and point graphs for time-based data
+  </Card>
+  <Card title="Stat" icon="hashtag">
+    Display single values with optional sparklines
+  </Card>
+  <Card title="Gauge" icon="gauge">
+    Show values on circular or linear gauges
+  </Card>
+  <Card title="Bar Chart" icon="chart-bar">
+    Compare values across categories
+  </Card>
+  <Card title="Table" icon="table">
+    Display data in rows and columns
+  </Card>
+  <Card title="Pie Chart" icon="chart-pie">
+    Show proportional data
+  </Card>
+</CardGroup>
+
+For this example:
+
+1. Grafana automatically suggests **Time series**
+2. Leave it as the default, or click **All visualizations** to explore other options
+3. The visualization preview updates automatically
+
+### Step 5: Customize Panel Options
+
+Make your panel more informative by adding titles and descriptions.
+
+1. Scroll down to **Panel options** section
+2. Set **Title**: `Server Temperature`
+3. Set **Description**: `Random walk simulation of server temperature over time`
+4. The title appears at the top of your panel
+
+<Tip>
+Use descriptive titles that clearly explain what the panel shows. This helps other users understand your dashboard.
+</Tip>
+
+### Step 6: Configure Visualization Settings
+
+Customize how your data is displayed.
+
+#### Graph Styles
+
+1. In the **Graph styles** section:
+   - **Style**: Lines
+   - **Line width**: 2
+   - **Fill opacity**: 10
+   - **Point size**: 5
+
+#### Axis Configuration
+
+1. Scroll to **Axis** section:
+   - **Label**: Temperature (°C)
+   - **Unit**: celsius (°C)
+   - **Min**: 0
+   - **Max**: Auto
+
+#### Standard Options
+
+1. In **Standard options**:
+   - **Unit**: Temperature → Celsius (°C)
+   - **Decimals**: 1
+   - **Display name**: ${__field.name}
+
+### Step 7: Set Up Thresholds
+
+Thresholds add visual indicators when values cross certain boundaries.
+
+1. Scroll to **Thresholds** section
+2. Click **+ Add threshold**
+3. Configure thresholds:
+   - Base: Green (0)
+   - Warning: Orange (70)
+   - Critical: Red (90)
+
+The visualization will color the line based on these thresholds.
+
+<Note>
+Thresholds are especially useful for gauges, stats, and tables where you want immediate visual feedback.
+</Note>
+
+### Step 8: Save Your Panel
+
+1. Click **Save** in the top-right corner
+2. Enter dashboard details:
+   - **Title**: `My First Dashboard`
+   - **Folder**: Select or create a folder
+3. Click **Save**
+
+## Adding More Panels
+
+Let's add additional panels to make a complete dashboard.
+
+### Add a Stat Panel
+
+1. Click **+ Add panel** in the dashboard
+2. Click **Configure**
+3. Configure the query:
+   - Data source: **TestData DB**
+   - Scenario: **Random Walk**
+   - Alias: `Current Value`
+4. Select **Stat** visualization
+5. In **Panel options**:
+   - Title: `Current Temperature`
+6. In **Stat styles**:
+   - **Graph mode**: None
+   - **Color mode**: Value
+   - **Text size**: Auto
+7. Click **Apply**
+
+### Add a Gauge Panel
+
+1. Click **+ Add panel**
+2. Click **Configure**
+3. Configure query same as above
+4. Select **Gauge** visualization
+5. In **Panel options**:
+   - Title: `Temperature Gauge`
+6. In **Gauge**:
+   - **Show threshold labels**: Yes
+   - **Show threshold markers**: Yes
+7. Set thresholds (Base: 0, Warning: 70, Critical: 90)
+8. Click **Apply**
+
+### Add a Table Panel
+
+1. Click **+ Add panel**
+2. Click **Configure**
+3. Configure query:
+   - Data source: **TestData DB**
+   - Scenario: **CSV Metric Values**
+4. Select **Table** visualization
+5. In **Panel options**:
+   - Title: `Metrics Table`
+6. Click **Apply**
+
+## Organizing Your Dashboard
+
+### Panel Layouts
+
+Grafana supports two panel layout types:
+
+#### Custom Layout
+
+- **Drag and drop** panels to reposition
+- **Resize** panels by dragging the lower-right corner
+- Provides complete control over panel placement
+
+```text Layout Tips
+- Full-width panels for headlines (24 grid units)
+- Half-width panels for comparisons (12 grid units each)
+- Quarter-width for key metrics (6 grid units each)
+```
+
+#### Auto Grid Layout
+
+1. Click **Dashboard options** icon (gear) in the sidebar
+2. Under **Layout**, select **Auto grid**
+3. Configure:
+   - **Min column width**: Standard, Narrow, Wide, or Custom
+   - **Max columns**: 1-10
+   - **Row height**: Standard, Short, Tall, or Custom
+
+Panels automatically resize to fill the grid.
+
+### Organizing with Rows
+
+Group related panels into collapsible rows.
+
+1. Select multiple panels by clicking and dragging
+2. Click **Group panels** → **Group into row**
+3. In the edit pane:
+   - **Title**: `Temperature Metrics`
+   - **Hide row header**: Toggle on/off
+4. Click **Save**
+
+Rows can be collapsed to save space and improve navigation.
+
+### Organizing with Tabs
+
+Create tabbed sections for different views.
+
+1. Select panels
+2. Click **Group panels** → **Group into tab**
+3. Configure tab title and options
+4. Add more tabs using **+ New tab**
+
+<Accordion title="When to Use Rows vs Tabs">
+  **Use Rows when:**
+  - You want to see multiple sections at once
+  - Users need to scroll through related content
+  - You have hierarchical data groupings
+
+  **Use Tabs when:**
+  - Different user roles need different views
+  - You have distinct categories of information
+  - Screen space is limited
+</Accordion>
+
+## Dashboard Settings
+
+Configure dashboard-wide settings.
+
+### Time Range
+
+1. In the dashboard toolbar, click the time picker
+2. Select a time range:
+   - **Relative**: Last 5m, Last 1h, Last 24h, Last 7d, etc.
+   - **Absolute**: Specific start and end dates
+3. Set **Refresh interval**: 5s, 10s, 30s, 1m, 5m, etc.
+
+### Dashboard Variables
+
+Variables allow dynamic dashboards that adapt to user selection.
+
+1. Click **Edit** on the dashboard
+2. Click **+ Add variable**
+3. Configure variable:
+   - **Name**: `server`
+   - **Type**: Query
+   - **Data source**: Your data source
+   - **Query**: Query to fetch variable values
+4. Click **Save**
+
+Use variables in queries: `${server}`
+
+<CodeGroup>
+```promql Prometheus with Variable
+rate(cpu_usage{instance="${server}"}[5m])
+```
+
+```sql SQL with Variable
+SELECT * FROM metrics WHERE server_name = '${server}'
+```
+</CodeGroup>
+
+### Dashboard Tags
+
+1. Click the **Dashboard settings** icon (gear)
+2. Under **General**, add tags:
+   - `production`
+   - `monitoring`
+   - `infrastructure`
+3. Tags help organize and search dashboards
+
+## Advanced Panel Features
+
+### Panel Links
+
+Add links to related dashboards or external resources.
+
+1. In panel editor, scroll to **Panel links**
+2. Click **+ Add link**
+3. Configure:
+   - **Title**: View Server Details
+   - **URL**: /d/server-details?var-server=${server}
+   - **Open in new tab**: Yes
+4. Link appears in panel menu (three dots)
+
+### Value Mappings
+
+Map numeric values to text labels.
+
+1. In panel editor, go to **Value mappings**
+2. Click **+ Add value mapping**
+3. Configure:
+   - **Type**: Range
+   - **From**: 0, **To**: 50
+   - **Display text**: Low
+   - **Color**: Green
+4. Add more mappings for different ranges
+
+### Field Overrides
+
+Customize individual series or fields.
+
+1. Go to **Overrides** tab
+2. Click **+ Add field override**
+3. Select field to override
+4. Add properties:
+   - Color scheme
+   - Unit
+   - Display name
+   - Thresholds
+
+## Saving and Sharing
+
+### Save Dashboard
+
+1. Click **Save dashboard** (disk icon)
+2. Enter a description of changes
+3. Click **Save**
+
+### Save as Copy
+
+1. Click **Save dashboard** dropdown
+2. Select **Save as copy**
+3. Enter new name and folder
+4. Click **Save**
+
+### Export Dashboard
+
+1. Click **Dashboard settings** (gear icon)
+2. Go to **JSON Model**
+3. Click **Copy to clipboard** or **Save to file**
+
+Dashboard JSON can be:
+- Shared with other Grafana instances
+- Version controlled in Git
+- Imported via API
+
+## Best Practices
+
+<CardGroup cols={2}>
+  <Card title="Clear Titles" icon="heading">
+    Use descriptive titles that explain what each panel shows
+  </Card>
+  <Card title="Appropriate Visualizations" icon="chart-mixed">
+    Choose visualizations that best represent your data type
+  </Card>
+  <Card title="Consistent Colors" icon="palette">
+    Use consistent color schemes across related panels
+  </Card>
+  <Card title="Logical Grouping" icon="layer-group">
+    Organize panels into rows or tabs by function
+  </Card>
+  <Card title="Time Ranges" icon="clock">
+    Set appropriate default time ranges for your use case
+  </Card>
+  <Card title="Annotations" icon="note-sticky">
+    Add annotations to mark important events
+  </Card>
+</CardGroup>
+
+### Dashboard Design Tips
+
+<AccordionGroup>
+  <Accordion title="Layout Guidelines">
+    - Place the most important metrics at the top
+    - Use larger panels for primary visualizations
+    - Group related metrics together
+    - Maintain consistent panel sizes within rows
+    - Leave whitespace for visual clarity
+  </Accordion>
+
+  <Accordion title="Performance Optimization">
+    - Limit the number of panels per dashboard (20-30 max)
+    - Use appropriate time ranges to reduce query load
+    - Leverage caching for frequently accessed data
+    - Avoid very short refresh intervals unless necessary
+    - Use query result transformations efficiently
+  </Accordion>
+
+  <Accordion title="User Experience">
+    - Add panel descriptions to provide context
+    - Use variables for flexible filtering
+    - Set sensible default time ranges
+    - Include links to related dashboards
+    - Add dashboard-level documentation
+  </Accordion>
+</AccordionGroup>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Add Data Sources" icon="database" href="/getting-started/adding-datasources">
+    Connect your real data to Grafana
+  </Card>
+  <Card title="User Management" icon="users" href="/getting-started/user-management">
+    Set up teams and permissions
+  </Card>
+</CardGroup>
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="Panel Shows 'No Data'">
+    - Verify your data source is connected and working
+    - Check your query syntax
+    - Ensure the time range includes data
+    - Review data source permissions
+    - Check browser console for errors
+  </Accordion>
+
+  <Accordion title="Dashboard Won't Save">
+    - Confirm you have Editor or Admin permissions
+    - Check dashboard title is not empty
+    - Verify folder permissions
+    - Look for validation errors in the UI
+  </Accordion>
+
+  <Accordion title="Slow Dashboard Performance">
+    - Reduce the number of panels
+    - Optimize data source queries
+    - Increase refresh interval
+    - Use shorter time ranges
+    - Enable query caching if available
+  </Accordion>
+</AccordionGroup>

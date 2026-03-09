@@ -1,0 +1,374 @@
+---
+title: Testing
+description: Testing guidelines for Grafana frontend and backend code
+---
+
+# Testing
+
+This guide covers testing practices for both frontend and backend code in Grafana.
+
+## Frontend testing
+
+### Recommended practices
+
+- **Default to `*ByRole` queries** - They encourage testing with accessibility in mind
+- **Alternative: `*ByLabelText` queries** - Though `*ByRole` queries are [more robust](https://testing-library.com/docs/queries/bylabeltext/#name)
+- **Use React Testing Library** - Don't create new snapshot tests; we're removing existing ones
+- **Migrate Enzyme tests** - When modifying existing tests, migrate from Enzyme to RTL (unless fixing a bug)
+
+### Testing user interactions
+
+Use the [user-event](https://testing-library.com/docs/user-event/intro) library instead of `fireEvent`:
+
+```tsx
+import { render, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+
+function setup(jsx: JSX.Element) {
+  return {
+    user: userEvent.setup(),
+    ...render(jsx),
+  };
+}
+
+it('should render', async () => {
+  const { user } = setup(<Button />);
+  await user.click(screen.getByRole('button'));
+});
+```
+
+<Note>
+- All `userEvent` methods are asynchronous - use `await`
+- Call `userEvent.setup()` before tests (use the utility function pattern above)
+</Note>
+
+### Debugging tests
+
+**Useful utilities:**
+
+- `screen.debug()` - Prints DOM tree to console
+- [Testing Playground](https://testing-playground.com/) - Interactive sandbox for testing queries
+- `prettyDOM logRoles` - Prints implicit ARIA roles for a DOM tree
+
+### Testing Select components
+
+#### Query by label
+
+Add a `label` element with `htmlFor` matching the `inputId`, or use `aria-label`:
+
+```tsx
+it('should render the picker', () => {
+  render(
+    <>
+      <label htmlFor={'role-picker'}>Role picker</label>
+      <OrgRolePicker value={OrgRole.Admin} inputId={'role-picker'} onChange={() => {}} />
+    </>
+  );
+  expect(screen.getByRole('combobox', { name: 'Role picker' })).toBeInTheDocument();
+});
+```
+
+#### Test displayed options
+
+Click the Select and match options using `*ByText`:
+
+```tsx
+it('should have an "Editor" option', async () => {
+  const { user } = setup(
+    <>
+      <label htmlFor={'role-picker'}>Role picker</label>
+      <OrgRolePicker value={OrgRole.Admin} inputId={'role-picker'} onChange={() => {}} />
+    </>
+  );
+  await user.click(screen.getByRole('combobox', { name: 'Role picker' }));
+  expect(screen.getByText('Editor')).toBeInTheDocument();
+});
+```
+
+#### Select an option
+
+Use the `selectOptionInTest` utility (wraps [react-select-event](https://testing-library.com/docs/ecosystem-react-select-event/)):
+
+```tsx
+it('should select an option', async () => {
+  const mockOnChange = jest.fn();
+  setup(
+    <>
+      <label htmlFor={'role-picker'}>Role picker</label>
+      <OrgRolePicker value={OrgRole.Admin} inputId={'role-picker'} onChange={mockOnChange} />
+    </>
+  );
+  await selectOptionInTest(screen.getByRole('combobox', { name: 'Role picker' }), 'Viewer');
+  expect(mockOnChange).toHaveBeenCalledWith('Viewer');
+});
+```
+
+### Mocking
+
+#### Mock window object
+
+Use Jest spies (they auto-restore):
+
+```tsx
+let windowSpy: jest.SpyInstance;
+
+beforeAll(() => {
+  windowSpy = jest.spyOn(window, 'location', 'get');
+});
+
+afterAll(() => {
+  windowSpy.mockRestore();
+});
+
+it('should test with window', () => {
+  windowSpy.mockImplementation(() => ({
+    href: 'www.example.com',
+  }));
+  expect(window.location.href).toBe('www.example.com');
+});
+```
+
+#### Mock getBackendSrv()
+
+For HTTP requests to Grafana backend:
+
+```tsx
+jest.mock('@grafana/runtime', () => ({
+  ...jest.requireActual('@grafana/runtime'),
+  getBackendSrv: () => ({
+    post: postMock,
+  }),
+}));
+```
+
+#### Mock getBackendSrv for AsyncSelect
+
+```tsx
+jest.mock('@grafana/runtime', () => ({
+  ...jest.requireActual('@grafana/runtime'),
+  getBackendSrv: () => ({
+    get: () =>
+      Promise.resolve([
+        { name: 'Org 1', id: 0 },
+        { name: 'Org 2', id: 1 },
+      ]),
+  }),
+}));
+
+it('should have the options', async () => {
+  const { user } = setup(
+    <>
+      <label htmlFor={'picker'}>Org picker</label>
+      <OrgPicker onSelected={() => {}} inputId={'picker'} />
+    </>
+  );
+  await user.click(await screen.findByRole('combobox', { name: 'Org picker' }));
+  expect(screen.getByText('Org 1')).toBeInTheDocument();
+  expect(screen.getByText('Org 2')).toBeInTheDocument();
+});
+```
+
+### Running frontend tests
+
+```bash
+# Run specific test file
+yarn test path/to/file
+
+# Run by name pattern
+yarn test -t "pattern"
+
+# Update snapshots
+yarn test -u
+
+# Run once (no watch mode)
+yarn jest --no-watch
+
+# Coverage report
+yarn test:coverage
+
+# CI mode
+yarn test:ci
+```
+
+## Backend testing
+
+### Test framework
+
+Use the standard library `testing` package. For assertions, prefer [testify](https://github.com/stretchr/testify).
+
+### TestMain and test suite
+
+Each package SHOULD include a `TestMain` function that calls `testsuite.Run(m)`:
+
+```go
+package mypkg
+
+import (
+	"testing"
+	"github.com/grafana/grafana/pkg/tests/testsuite"
+)
+
+func TestMain(m *testing.M) {
+	testsuite.Run(m)
+}
+```
+
+<Warning>
+For tests that use the database, you MUST define `TestMain` so test databases can be cleaned up properly.
+</Warning>
+
+Only define `TestMain` once per package (in one `_test.go` file).
+
+### Integration tests
+
+Mark integration tests properly to keep CI running smoothly:
+
+```go
+func TestIntegrationFoo(t *testing.T) {
+    testutil.SkipIntegrationTestInShortMode(t)
+    // test body
+}
+```
+
+<Warning>
+If you don't follow this convention, your integration test may run twice or not at all.
+</Warning>
+
+### Assertions
+
+- Use `assert.*` for "soft checks" (don't halt test)
+- Use `require.*` for "hard checks" (halt test on failure)
+
+Typically use `require.*` for error assertions, since continuing after an error is chaotic and often causes segfaults.
+
+### Sub-tests
+
+Use `t.Run` to group test cases:
+
+```go
+func TestFeature(t *testing.T) {
+    t.Run("case 1", func(t *testing.T) {
+        // test case 1
+    })
+    t.Run("case 2", func(t *testing.T) {
+        // test case 2
+    })
+}
+```
+
+This allows:
+- Common setup/teardown code
+- Running test cases in isolation when debugging
+
+Don't use `t.Run` just to group assertions.
+
+### Cleanup
+
+Use `t.Cleanup` instead of `defer` (it works in helper functions):
+
+```go
+func TestFeature(t *testing.T) {
+    resource := setup()
+    t.Cleanup(func() {
+        resource.Close()
+    })
+    // test body
+}
+```
+
+Cleanup functions execute in reverse order after the test completes.
+
+### Mocking with testify/mock
+
+#### Basic mock implementation
+
+Given this interface:
+
+```go
+type MyInterface interface {
+    Get(ctx context.Context, id string) (Object, error)
+}
+```
+
+Mock it like this:
+
+```go
+import "github.com/stretchr/testify/mock"
+
+type MockImplementation struct {
+    mock.Mock
+}
+
+func (m *MockImplementation) Get(ctx context.Context, id string) (Object, error) {
+    args := m.Called(ctx, id)
+    return args.Get(0).(Object), args.Error(1)
+}
+```
+
+#### Using mocks in tests
+
+```go
+objectToReturn := Object{Message: "abc"}
+errToReturn := errors.New("my error")
+
+myMock := &MockImplementation{}
+defer myMock.AssertExpectations(t)
+
+myMock.On("Get", mock.Anything, "id1").Return(Object{}, errToReturn).Once()
+myMock.On("Get", mock.Anything, "id2").Return(objectToReturn, nil).Once()
+
+anyService := NewService(myMock)
+
+resp, err := anyService.Call("id1")
+assert.Error(t, err, errToReturn)
+
+resp, err = anyService.Call("id2")
+assert.Nil(t, err)
+assert.Equal(t, resp.Message, objectToReturn.Message)
+```
+
+**Tips:**
+- Use `Once()` or `Times(n)` to limit call count
+- Use `mockedClass.AssertExpectations(t)` to verify call counts
+- Use `mock.Anything` when you don't care about the argument
+- Use `mockedClass.AssertNotCalled(t, "MethodName")` to assert a method wasn't called
+
+#### Generate mocks with mockery
+
+For large interfaces, use [mockery](https://github.com/vektra/mockery) to generate mocks:
+
+```bash
+mockery --name InterfaceName --structname MockImplementationName --inpackage --filename my_implementation_mock.go
+```
+
+Or add a `go:generate` comment:
+
+```go
+package mypackage
+
+//go:generate mockery --name InterfaceName --structname MockImplementationName --inpackage --filename my_implementation_mock.go
+```
+
+### Running backend tests
+
+```bash
+# Specific test
+go test -run TestName ./pkg/services/myservice/
+
+# All unit tests
+make test-go-unit
+
+# Integration tests
+make test-go-integration
+
+# With database backends
+make devenv sources=postgres_tests,mysql_tests
+make test-go-integration-postgres
+```
+
+## Test requirements for pull requests
+
+- Include tests that verify the intended behavior
+- For bug fixes, include tests that replicate the bug (prevent regressions)
+- Run appropriate tests as part of your PR
+- Ensure all CI checks pass before merge

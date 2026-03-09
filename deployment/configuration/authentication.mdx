@@ -1,0 +1,613 @@
+---
+title: Authentication Configuration
+description: Configure authentication providers and user management in Grafana
+---
+
+Grafana supports multiple authentication methods including built-in authentication, OAuth providers, LDAP, SAML, and more. This guide covers configuring authentication for your Grafana deployment.
+
+## Authentication Methods
+
+Grafana supports these authentication methods:
+
+- **Basic Authentication** - Built-in username/password authentication
+- **OAuth 2.0** - GitHub, Google, GitLab, Azure AD, Okta, Generic OAuth
+- **LDAP** - Active Directory and other LDAP servers
+- **SAML** - Enterprise SSO (Grafana Enterprise)
+- **Auth Proxy** - Reverse proxy authentication
+- **JWT** - JSON Web Token authentication
+- **Anonymous Access** - Allow unauthenticated access
+
+## Basic Authentication
+
+Built-in username and password authentication.
+
+### Configuration
+
+```ini
+[auth.basic]
+# Enable basic auth
+enabled = true
+
+# Enable strong password policy
+# Requires: 12+ chars, 1 uppercase, 1 lowercase, 1 digit, 1 symbol
+password_policy = false
+```
+
+### Environment Variables
+
+```bash
+export GF_AUTH_BASIC_ENABLED=true
+export GF_AUTH_BASIC_PASSWORD_POLICY=false
+```
+
+### Admin User
+
+Configure the default admin user created on first startup:
+
+```ini
+[security]
+# Default admin user
+admin_user = admin
+
+# Default admin password (change on first login)
+admin_password = admin
+
+# Admin email
+admin_email = admin@localhost
+
+# Disable initial admin creation
+disable_initial_admin_creation = false
+```
+
+```bash
+export GF_SECURITY_ADMIN_USER=admin
+export GF_SECURITY_ADMIN_PASSWORD=changeme
+export GF_SECURITY_ADMIN_EMAIL=admin@example.com
+```
+
+## OAuth Authentication
+
+Integrate with OAuth 2.0 providers for single sign-on.
+
+### GitHub OAuth
+
+```ini
+[auth.github]
+name = GitHub
+icon = github
+enabled = true
+allow_sign_up = true
+auto_login = false
+
+# GitHub OAuth App credentials
+client_id = your_github_client_id
+client_secret = your_github_client_secret
+
+# OAuth scopes
+scopes = user:email,read:org
+
+# GitHub OAuth URLs
+auth_url = https://github.com/login/oauth/authorize
+token_url = https://github.com/login/oauth/access_token
+api_url = https://api.github.com/user
+
+# Restrict to organizations
+allowed_organizations = myorg,anotherorg
+
+# Restrict to teams
+team_ids = 123456,789012
+
+# Role mapping
+role_attribute_path = contains(groups[*], '@myorg/team-admins') && 'Admin' || 'Viewer'
+role_attribute_strict = false
+
+# Organization mapping
+org_mapping = org1:1,org2:2
+
+# Allow Grafana admin assignment via OAuth
+allow_assign_grafana_admin = false
+
+# Skip organization role sync
+skip_org_role_sync = false
+```
+
+**Environment Variables:**
+
+```bash
+export GF_AUTH_GITHUB_ENABLED=true
+export GF_AUTH_GITHUB_ALLOW_SIGN_UP=true
+export GF_AUTH_GITHUB_CLIENT_ID=github_client_id
+export GF_AUTH_GITHUB_CLIENT_SECRET=github_client_secret
+export GF_AUTH_GITHUB_SCOPES="user:email,read:org"
+export GF_AUTH_GITHUB_ALLOWED_ORGANIZATIONS=myorg
+```
+
+### Google OAuth
+
+```ini
+[auth.google]
+name = Google
+icon = google
+enabled = true
+allow_sign_up = true
+auto_login = false
+
+# Google OAuth credentials
+client_id = your_google_client_id
+client_secret = your_google_client_secret
+
+# OAuth scopes
+scopes = openid email profile
+
+# Google OAuth URLs
+auth_url = https://accounts.google.com/o/oauth2/v2/auth
+token_url = https://oauth2.googleapis.com/token
+api_url = https://openidconnect.googleapis.com/v1/userinfo
+
+# Restrict to domains
+allowed_domains = example.com,company.com
+
+# Validate hosted domain
+validate_hd = true
+hosted_domain = example.com
+
+# Role mapping
+role_attribute_path = "contains(groups[*], 'admins') && 'Admin' || 'Viewer'"
+
+# Use PKCE
+use_pkce = true
+
+# Use refresh tokens
+use_refresh_token = true
+```
+
+**Environment Variables:**
+
+```bash
+export GF_AUTH_GOOGLE_ENABLED=true
+export GF_AUTH_GOOGLE_CLIENT_ID=google_client_id
+export GF_AUTH_GOOGLE_CLIENT_SECRET=google_client_secret
+export GF_AUTH_GOOGLE_ALLOWED_DOMAINS=example.com
+```
+
+### Azure AD OAuth
+
+```ini
+[auth.azuread]
+name = Microsoft
+icon = microsoft
+enabled = true
+allow_sign_up = true
+auto_login = false
+
+# Azure AD OAuth credentials
+client_id = your_azure_client_id
+client_secret = your_azure_client_secret
+
+# OAuth scopes
+scopes = openid email profile
+
+# Azure AD OAuth URLs (replace <tenant-id>)
+auth_url = https://login.microsoftonline.com/<tenant-id>/oauth2/v2.0/authorize
+token_url = https://login.microsoftonline.com/<tenant-id>/oauth2/v2.0/token
+
+# Restrict to groups
+allowed_groups = group-id-1,group-id-2
+
+# Restrict to organizations
+allowed_organizations = org-id-1,org-id-2
+
+# Role mapping
+role_attribute_strict = false
+
+# Use PKCE
+use_pkce = true
+
+# Use refresh tokens
+use_refresh_token = true
+```
+
+**Environment Variables:**
+
+```bash
+export GF_AUTH_AZUREAD_ENABLED=true
+export GF_AUTH_AZUREAD_CLIENT_ID=azure_client_id
+export GF_AUTH_AZUREAD_CLIENT_SECRET=azure_client_secret
+export GF_AUTH_AZUREAD_AUTH_URL="https://login.microsoftonline.com/<tenant-id>/oauth2/v2.0/authorize"
+export GF_AUTH_AZUREAD_TOKEN_URL="https://login.microsoftonline.com/<tenant-id>/oauth2/v2.0/token"
+```
+
+### GitLab OAuth
+
+```ini
+[auth.gitlab]
+name = GitLab
+icon = gitlab
+enabled = true
+allow_sign_up = true
+auto_login = false
+
+# GitLab OAuth credentials
+client_id = your_gitlab_client_id
+client_secret = your_gitlab_client_secret
+
+# OAuth scopes
+scopes = openid email profile
+
+# GitLab OAuth URLs
+auth_url = https://gitlab.com/oauth/authorize
+token_url = https://gitlab.com/oauth/token
+api_url = https://gitlab.com/api/v4
+
+# Restrict to groups
+allowed_groups = group1,group2
+
+# Use PKCE
+use_pkce = true
+
+# Use refresh tokens
+use_refresh_token = true
+```
+
+### Okta OAuth
+
+```ini
+[auth.okta]
+name = Okta
+icon = okta
+enabled = true
+allow_sign_up = true
+auto_login = false
+
+# Okta OAuth credentials
+client_id = your_okta_client_id
+client_secret = your_okta_client_secret
+
+# OAuth scopes
+scopes = openid profile email groups
+
+# Okta OAuth URLs (replace <tenant-id>)
+auth_url = https://<tenant-id>.okta.com/oauth2/v1/authorize
+token_url = https://<tenant-id>.okta.com/oauth2/v1/token
+api_url = https://<tenant-id>.okta.com/oauth2/v1/userinfo
+
+# Restrict to groups
+allowed_groups = admins,developers
+
+# Use PKCE
+use_pkce = true
+```
+
+### Generic OAuth
+
+Configure any OAuth 2.0 compatible provider:
+
+```ini
+[auth.generic_oauth]
+name = OAuth
+icon = signin
+enabled = true
+allow_sign_up = true
+auto_login = false
+
+# OAuth credentials
+client_id = your_client_id
+client_secret = your_client_secret
+
+# OAuth scopes
+scopes = user:email
+empty_scopes = false
+
+# OAuth URLs
+auth_url = https://provider.com/oauth/authorize
+token_url = https://provider.com/oauth/token
+api_url = https://provider.com/api/user
+
+# Attribute mapping
+email_attribute_name = email:primary
+email_attribute_path = email
+login_attribute_path = username
+name_attribute_path = name
+role_attribute_path = role
+groups_attribute_path = groups
+
+# Use PKCE
+use_pkce = false
+
+# Use refresh tokens
+use_refresh_token = false
+```
+
+## LDAP Authentication
+
+Integrate with LDAP and Active Directory.
+
+### Configuration
+
+```ini
+[auth.ldap]
+enabled = true
+config_file = /etc/grafana/ldap.toml
+allow_sign_up = true
+
+# Skip organization role sync
+skip_org_role_sync = false
+
+# LDAP background sync (Enterprise only)
+sync_cron = "0 1 * * *"  # At 1 AM every day
+active_sync_enabled = true
+```
+
+### LDAP Configuration File
+
+Create `/etc/grafana/ldap.toml`:
+
+```toml
+# LDAP server configuration
+[[servers]]
+host = "ldap.example.com"
+port = 389
+use_ssl = false
+start_tls = true
+ssl_skip_verify = false
+
+# Bind credentials
+bind_dn = "cn=admin,dc=example,dc=com"
+bind_password = "password"
+
+# User search
+search_filter = "(uid=%s)"
+search_base_dns = ["ou=users,dc=example,dc=com"]
+
+# User attribute mapping
+[servers.attributes]
+name = "givenName"
+surname = "sn"
+username = "uid"
+member_of = "memberOf"
+email = "email"
+
+# Group mappings
+[[servers.group_mappings]]
+group_dn = "cn=admins,ou=groups,dc=example,dc=com"
+org_role = "Admin"
+
+[[servers.group_mappings]]
+group_dn = "cn=editors,ou=groups,dc=example,dc=com"
+org_role = "Editor"
+
+[[servers.group_mappings]]
+group_dn = "cn=viewers,ou=groups,dc=example,dc=com"
+org_role = "Viewer"
+```
+
+**Environment Variables:**
+
+```bash
+export GF_AUTH_LDAP_ENABLED=true
+export GF_AUTH_LDAP_CONFIG_FILE=/etc/grafana/ldap.toml
+export GF_AUTH_LDAP_ALLOW_SIGN_UP=true
+```
+
+## Auth Proxy
+
+Authenticate users via a reverse proxy.
+
+```ini
+[auth.proxy]
+enabled = true
+
+# Header containing username
+header_name = X-WEBAUTH-USER
+
+# Header property: username or email
+header_property = username
+
+# Auto-create users
+auto_sign_up = true
+
+# Sync TTL (minutes)
+sync_ttl = 15
+
+# Whitelist of proxy IPs
+whitelist = 192.168.1.0/24,10.0.0.0/8
+
+# Additional headers
+headers = Email:X-WEBAUTH-EMAIL Name:X-WEBAUTH-NAME
+
+# Are headers base64 encoded
+headers_encoded = false
+
+# Enable login token
+enable_login_token = false
+```
+
+**Environment Variables:**
+
+```bash
+export GF_AUTH_PROXY_ENABLED=true
+export GF_AUTH_PROXY_HEADER_NAME=X-WEBAUTH-USER
+export GF_AUTH_PROXY_AUTO_SIGN_UP=true
+```
+
+## JWT Authentication
+
+```ini
+[auth.jwt]
+enabled = true
+
+# Header name containing JWT
+header_name = X-JWT-Assertion
+
+# JWT claims
+email_claim = email
+username_claim = username
+
+# JWK Set URL for token validation
+jwk_set_url = https://provider.com/.well-known/jwks.json
+
+# Cache TTL for JWK Set
+cache_ttl = 60m
+
+# Expected claims (JSON)
+expect_claims = {"aud": "grafana"}
+
+# Key file (alternative to JWK Set URL)
+key_file = /path/to/public-key.pem
+
+# Auto sign-up
+auto_sign_up = true
+
+# URL login mode
+url_login = false
+```
+
+## Anonymous Access
+
+Allow unauthenticated access to Grafana.
+
+```ini
+[auth.anonymous]
+# Enable anonymous access
+enabled = false
+
+# Organization name for anonymous users
+org_name = Main Org.
+
+# Role for anonymous users (Viewer, Editor, Admin)
+org_role = Viewer
+
+# Hide Grafana version for anonymous users
+hide_version = false
+```
+
+**Environment Variables:**
+
+```bash
+export GF_AUTH_ANONYMOUS_ENABLED=true
+export GF_AUTH_ANONYMOUS_ORG_ROLE=Viewer
+```
+
+## User Management
+
+### User Registration
+
+```ini
+[users]
+# Allow users to sign up
+allow_sign_up = false
+
+# Allow users to create organizations
+allow_org_create = false
+
+# Auto-assign new users to organization
+auto_assign_org = true
+auto_assign_org_id = 1
+auto_assign_org_role = Viewer
+
+# Require email validation
+verify_email_enabled = false
+
+# Default organization after login
+login_default_org_id = 1
+
+# Login page hints
+login_hint = email or username
+password_hint = password
+
+# Default theme (dark, light, system)
+default_theme = dark
+
+# User invite expiration
+user_invite_max_lifetime_duration = 24h
+```
+
+### Authentication Settings
+
+```ini
+[auth]
+# Login cookie name
+login_cookie_name = grafana_session
+
+# Disable Grafana login (use only OAuth/LDAP)
+disable_login = false
+
+# Maximum inactive lifetime
+login_maximum_inactive_lifetime_duration = 7d
+
+# Maximum lifetime
+login_maximum_lifetime_duration = 30d
+
+# Token rotation interval
+token_rotation_interval_minutes = 10
+
+# Disable login form (for OAuth-only setups)
+disable_login_form = false
+
+# Disable signout menu
+disable_signout_menu = false
+
+# Signout redirect URL
+signout_redirect_url =
+
+# OAuth auto-login
+oauth_auto_login = false
+
+# OAuth state cookie max age
+oauth_state_cookie_max_age = 600
+```
+
+## Security Settings
+
+```ini
+[security]
+# Secret key for signing
+secret_key = SW2YcwTIb9zpOOhoPsMm
+
+# Cookie security
+cookie_secure = true
+cookie_samesite = lax
+
+# Brute force protection
+disable_brute_force_login_protection = false
+brute_force_login_protection_max_attempts = 5
+disable_username_login_protection = false
+disable_ip_address_login_protection = true
+
+# Content Security Policy
+content_security_policy = false
+content_security_policy_template = """script-src 'self' 'unsafe-eval' 'unsafe-inline'"""
+```
+
+## Best Practices
+
+1. **Use OAuth/SAML for production** - Integrate with your organization's identity provider
+2. **Enable HTTPS** - Always use TLS for authentication in production
+3. **Disable unnecessary auth methods** - Only enable authentication methods you need
+4. **Use strong passwords** - Enable password policy for basic auth
+5. **Restrict sign-up** - Disable `allow_sign_up` in production
+6. **Configure role mapping** - Map external groups to Grafana roles
+7. **Enable brute force protection** - Protect against login attacks
+8. **Use refresh tokens** - Enable `use_refresh_token` for OAuth providers
+9. **Store secrets securely** - Use environment variables for OAuth secrets
+10. **Test authentication** - Verify auth configuration before deploying to production
+
+## Troubleshooting
+
+**OAuth redirect URI mismatch:**
+- Verify `root_url` in `[server]` section matches OAuth redirect URI
+- Check OAuth provider configuration
+
+**LDAP authentication fails:**
+- Test LDAP connection with `ldapsearch`
+- Verify bind credentials and search filters
+- Check LDAP server logs
+
+**Users can't log in:**
+- Check Grafana logs for authentication errors
+- Verify user exists and has correct role
+- Test with admin user to isolate issue
+
+**OAuth token expired:**
+- Enable `use_refresh_token` to automatically refresh tokens
+- Check token expiration settings in OAuth provider
