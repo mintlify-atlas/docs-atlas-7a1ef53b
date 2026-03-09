@@ -1,0 +1,208 @@
+{
+  "projectType": "saas",
+  "projectName": "Grafana",
+  "projectDescription": "The open and composable observability and data visualization platform for monitoring metrics, logs, and traces.",
+  "theme": "maple",
+  "primaryColor": "#f58222",
+  "lightColor": "#f9c937",
+  "darkColor": "#f4f4f4",
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Documentation",
+        "groups": [
+          {
+            "group": "Overview",
+            "pages": [
+              "introduction",
+              "quickstart",
+              "core-concepts"
+            ]
+          },
+          {
+            "group": "Getting Started",
+            "pages": [
+              "getting-started/installation",
+              "getting-started/first-dashboard",
+              "getting-started/adding-datasources",
+              "getting-started/user-management"
+            ]
+          },
+          {
+            "group": "Dashboards",
+            "pages": [
+              "dashboards/overview",
+              "dashboards/creating-dashboards",
+              "dashboards/panels",
+              "dashboards/variables",
+              "dashboards/templating",
+              "dashboards/sharing"
+            ]
+          },
+          {
+            "group": "Data Sources",
+            "pages": [
+              "datasources/overview",
+              "datasources/prometheus",
+              "datasources/loki",
+              "datasources/elasticsearch",
+              "datasources/influxdb",
+              "datasources/mysql-postgres"
+            ]
+          },
+          {
+            "group": "Alerting",
+            "pages": [
+              "alerting/overview",
+              "alerting/alert-rules",
+              "alerting/notification-channels",
+              "alerting/silences",
+              "alerting/contact-points"
+            ]
+          },
+          {
+            "group": "Explore",
+            "pages": [
+              "explore/overview",
+              "explore/querying-metrics",
+              "explore/querying-logs",
+              "explore/tracing"
+            ]
+          },
+          {
+            "group": "Visualization",
+            "pages": [
+              "visualization/panels-overview",
+              "visualization/graph-panel",
+              "visualization/table-panel",
+              "visualization/stat-panel",
+              "visualization/gauge-panel"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "Deployment",
+        "groups": [
+          {
+            "group": "Installation",
+            "pages": [
+              "deployment/installation/overview",
+              "deployment/installation/docker",
+              "deployment/installation/kubernetes",
+              "deployment/installation/debian-ubuntu",
+              "deployment/installation/rpm-based"
+            ]
+          },
+          {
+            "group": "Configuration",
+            "pages": [
+              "deployment/configuration/overview",
+              "deployment/configuration/configuration-file",
+              "deployment/configuration/environment-variables",
+              "deployment/configuration/database",
+              "deployment/configuration/authentication"
+            ]
+          },
+          {
+            "group": "Operations",
+            "pages": [
+              "deployment/operations/monitoring",
+              "deployment/operations/backup-restore",
+              "deployment/operations/upgrading",
+              "deployment/operations/high-availability"
+            ]
+          },
+          {
+            "group": "Security",
+            "pages": [
+              "deployment/security/authentication",
+              "deployment/security/authorization",
+              "deployment/security/tls-ssl",
+              "deployment/security/best-practices"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "Development",
+        "groups": [
+          {
+            "group": "Getting Started",
+            "pages": [
+              "development/getting-started",
+              "development/local-setup",
+              "development/project-structure",
+              "development/building"
+            ]
+          },
+          {
+            "group": "Architecture",
+            "pages": [
+              "development/architecture/overview",
+              "development/architecture/backend",
+              "development/architecture/frontend",
+              "development/architecture/plugins",
+              "development/architecture/database"
+            ]
+          },
+          {
+            "group": "Contributing",
+            "pages": [
+              "development/contributing/contributing-guide",
+              "development/contributing/code-style",
+              "development/contributing/testing",
+              "development/contributing/pull-requests"
+            ]
+          },
+          {
+            "group": "Plugin Development",
+            "pages": [
+              "development/plugins/overview",
+              "development/plugins/datasource-plugins",
+              "development/plugins/panel-plugins",
+              "development/plugins/app-plugins",
+              "development/plugins/publishing"
+            ]
+          },
+          {
+            "group": "API Reference",
+            "pages": [
+              "development/api/overview",
+              "development/api/authentication",
+              "development/api/dashboards",
+              "development/api/datasources",
+              "development/api/users",
+              "development/api/organizations",
+              "development/api/alerts"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "keyFeatures": [
+    "Dynamic dashboards with interactive visualizations",
+    "Multi-datasource support (Prometheus, Loki, Elasticsearch, InfluxDB, MySQL, PostgreSQL)",
+    "Unified alerting system with notification channels",
+    "Explore mode for ad-hoc queries and log analysis",
+    "Plugin system for custom datasources, panels, and apps",
+    "Role-based access control and team management",
+    "Template variables for reusable dashboards",
+    "Built-in query editors for multiple data sources",
+    "Real-time data streaming and live dashboards",
+    "Annotation support for marking events on graphs"
+  ],
+  "publicApiSurface": [
+    "HTTP REST API for dashboards, datasources, users, organizations, and alerts",
+    "Plugin API for datasources, panels, and applications",
+    "Alerting API for managing alert rules and notification channels",
+    "Dashboard provisioning API",
+    "Data source provisioning API",
+    "Authentication API (OAuth, LDAP, SAML)",
+    "Query API for time series data",
+    "Annotation API",
+    "Snapshot API",
+    "Admin API"
+  ]
+}
